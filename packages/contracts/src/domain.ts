@@ -251,6 +251,7 @@ export const RunSchema = z.object({
     "spawn",
     "skill",
     "bot_message",
+    "channel",
     "onboarding",
   ]),
   modelProvider: z.string().nullable(),
@@ -302,6 +303,39 @@ export const BotChannelSchema = z.object({
   messages: z.array(BotChannelEntrySchema),
 });
 export type BotChannel = z.infer<typeof BotChannelSchema>;
+
+export const ChannelMemberSchema = z.object({
+  botId: Id,
+  name: z.string(),
+  color: z.string(),
+});
+export type ChannelMember = z.infer<typeof ChannelMemberSchema>;
+
+export const ChannelMessageSchema = z.object({
+  id: Id,
+  authorType: z.enum(["user", "bot"]),
+  authorBotId: Id.nullable(),
+  authorName: z.string(),
+  authorColor: z.string().nullable(),
+  text: z.string(),
+  createdAt: z.string(),
+});
+export type ChannelMessage = z.infer<typeof ChannelMessageSchema>;
+
+export const ChannelSchema = z.object({
+  id: Id,
+  name: z.string(),
+  members: z.array(ChannelMemberSchema),
+  preview: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Channel = z.infer<typeof ChannelSchema>;
+
+export const ChannelDetailSchema = ChannelSchema.extend({
+  messages: z.array(ChannelMessageSchema),
+});
+export type ChannelDetail = z.infer<typeof ChannelDetailSchema>;
 
 export const ModelCredentialKeySchema = z.object({
   id: Id,

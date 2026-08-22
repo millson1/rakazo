@@ -9,6 +9,8 @@ import {
   BotSchema,
   BotSectionSchema,
   CapabilityInstallSchema,
+  ChannelDetailSchema,
+  ChannelSchema,
   ComputerModeSchema,
   ComputerStatusSchema,
   ConnectionCatalogItemSchema,
@@ -199,6 +201,21 @@ export const appContract = {
     markRead: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     markUnread: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     channel: oc.input(z.object({ botId: Id, peerBotId: Id })).output(BotChannelSchema),
+  },
+  channels: {
+    list: oc.output(z.array(ChannelSchema)),
+    create: oc
+      .input(z.object({ name: z.string().min(1).max(80), botIds: z.array(Id).default([]) }))
+      .output(ChannelSchema),
+    get: oc.input(z.object({ channelId: Id })).output(ChannelDetailSchema),
+    rename: oc
+      .input(z.object({ channelId: Id, name: z.string().min(1).max(80) }))
+      .output(ChannelSchema),
+    setMembers: oc.input(z.object({ channelId: Id, botIds: z.array(Id) })).output(ChannelSchema),
+    post: oc
+      .input(z.object({ channelId: Id, text: z.string().min(1).max(8000) }))
+      .output(ChannelDetailSchema),
+    remove: oc.input(z.object({ channelId: Id })).output(z.object({ ok: z.literal(true) })),
   },
   computer: {
     status: oc.input(botId).output(ComputerStatusSchema),

@@ -5,6 +5,7 @@ import {
   DesktopSandboxProvider,
   FakeSandboxProvider,
   ManagedSandboxEmulator,
+  postBotChannelMessage,
 } from "@rakazo/adapters";
 import { appendEvent, createThreadMessage, RunHistoryWriteError } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1315,6 +1316,121 @@ describeJourneys("required product journeys", () => {
     expect(secondText).toContain("1 other bot");
   });
 
+  it("20: a channel wakes only the bots a message mentions", async () => {
+    const cookie = await signup(app, `channel-j-${stamp}@rakazo.test`, "Ada Channel");
+    const intruder = await signup(app, `channel-x-j-${stamp}@rakazo.test`, "Mallory Channel");
+    const alpha = await rpc<Bot>(app, cookie, "bots/create", {
+      name: "Alpha",
+      title: "",
+      description: "",
+      instructions: "",
+      notifyOnFinish: true,
+    });
+    const beta = await rpc<Bot>(app, cookie, "bots/create", {
+      name: "Beta",
+      title: "",
+      description: "",
+      instructions: "",
+      notifyOnFinish: true,
+    });
+
+    const channel = await rpc<ChannelDto>(app, cookie, "channels/create", {
+      name: "general",
+      botIds: [alpha.id, beta.id],
+    });
+    expect(channel.name).toBe("general");
+    expect(channel.members.map((member) => member.name).sort()).toEqual(["Alpha", "Beta"]);
+    expect((await rpc<ChannelDto[]>(app, cookie, "channels/list")).map((c) => c.id)).toContain(
+      channel.id,
+    );
+
+    const posted = await rpc<ChannelDetailDto>(app, cookie, "channels/post", {
+      channelId: channel.id,
+      text: "@Alpha can you take the invoice?",
+    });
+    const userMessage = posted.messages.at(-1);
+    expect(userMessage?.authorType).toBe("user");
+    expect(userMessage?.authorName).toBe("Ada Channel");
+
+    await waitForDatabase(async () => {
+      const runs = await prisma.run.count({ where: { botId: alpha.id, trigger: "channel" } });
+      return runs > 0;
+    });
+    expect(await prisma.run.count({ where: { botId: beta.id, trigger: "channel" } })).toBe(0);
+    const alphaRun = await prisma.run.findFirstOrThrow({
+      where: { botId: alpha.id, trigger: "channel" },
+      include: { task: { select: { prompt: true } } },
+    });
+    expect(alphaRun.task?.prompt).toContain("#general");
+    expect(alphaRun.task?.prompt).toContain(channel.id);
+
+    // A bot posts back through the same path the post_to_channel tool uses.
+    const me = await rpc<Me>(app, cookie, "me");
+    expect(
+      await postBotChannelMessage(prisma, {
+        workspaceId: me.workspaceId,
+        channelId: channel.id,
+        botId: alpha.id,
+        text: "On it.",
+      }),
+    ).toEqual({ ok: true, channelId: channel.id });
+    const reply = (
+      await rpc<ChannelDetailDto>(app, cookie, "channels/get", {
+        channelId: channel.id,
+      })
+    ).messages.at(-1);
+    expect(reply).toMatchObject({ authorType: "bot", authorName: "Alpha", text: "On it." });
+
+    // Non-members cannot post, and another workspace cannot see or touch the channel.
+    expect(
+      await postBotChannelMessage(prisma, {
+        workspaceId: me.workspaceId,
+        channelId: channel.id,
+        botId: (
+          await rpc<Bot>(app, cookie, "bots/create", {
+            name: "Outsider",
+            title: "",
+            description: "",
+            instructions: "",
+            notifyOnFinish: true,
+          })
+        ).id,
+        text: "let me in",
+      }),
+    ).toEqual({ error: "You are not a member of that channel." });
+    expect(await rpc<ChannelDto[]>(app, intruder, "channels/list")).toEqual([]);
+    for (const proc of ["channels/get", "channels/remove"]) {
+      expect(
+        (await raw(app, intruder, proc, { channelId: channel.id })).status,
+      ).toBeGreaterThanOrEqual(400);
+    }
+    expect(
+      (await raw(app, intruder, "channels/post", { channelId: channel.id, text: "hi" })).status,
+    ).toBeGreaterThanOrEqual(400);
+
+    const renamed = await rpc<ChannelDto>(app, cookie, "channels/rename", {
+      channelId: channel.id,
+      name: "invoices",
+    });
+    expect(renamed.name).toBe("invoices");
+    const trimmed = await rpc<ChannelDto>(app, cookie, "channels/setMembers", {
+      channelId: channel.id,
+      botIds: [beta.id],
+    });
+    expect(trimmed.members.map((member) => member.botId)).toEqual([beta.id]);
+    // A dropped member keeps its past messages but loses the right to post.
+    const afterDrop = await rpc<ChannelDetailDto>(app, cookie, "channels/get", {
+      channelId: channel.id,
+    });
+    expect(afterDrop.messages.some((message) => message.text === "On it.")).toBe(true);
+
+    await rpc(app, cookie, "channels/remove", { channelId: channel.id });
+    expect((await rpc<ChannelDto[]>(app, cookie, "channels/list")).map((c) => c.id)).not.toContain(
+      channel.id,
+    );
+    expect(await prisma.channelMessage.count({ where: { channelId: channel.id } })).toBe(0);
+  });
+
   it("21: hiding a bot is a per-user flag that survives a reload", async () => {
     const cookie = await signup(app, `hidden-j-${stamp}@rakazo.test`, "Ada Hidden");
     const bot = await rpc<Bot>(app, cookie, "bots/create", {
@@ -1356,6 +1472,21 @@ type Bot = {
   unread: boolean;
   computerMode: "team" | "dedicated";
   parentBotId?: string | null;
+};
+type ChannelDto = {
+  id: string;
+  name: string;
+  members: Array<{ botId: string; name: string; color: string }>;
+  preview: string;
+};
+type ChannelDetailDto = ChannelDto & {
+  messages: Array<{
+    id: string;
+    authorType: "user" | "bot";
+    authorBotId: string | null;
+    authorName: string;
+    text: string;
+  }>;
 };
 type Snap = {
   messages: Array<{ seq: number; blocks: unknown[] }>;
