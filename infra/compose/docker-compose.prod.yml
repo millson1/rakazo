@@ -22,6 +22,80 @@ services:
       timeout: 5s
       retries: 20
 
+  # One-shot: builds `rakazo/computer:local` so the supervisor can spawn bot desktops. Docker is
+  # the production default; without this image a `SANDBOX_PROVIDER=docker` stack cannot start a
+  # computer. E2B/Daytona/Box do not use it.
+  computer:
+    image: ${RAKAZO_COMPUTER_IMAGE:-rakazo/computer:local}
+    build:
+      context: ../sandboxes/computer
+    command: ["true"]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+
+  data-init:
+    image: busybox:1
+    command: ["chown", "-R", "1000:1000", "/data"]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - appdata:/data
+    networks:
+      - app
+
+  # Holds the Docker socket to spawn bot computers. Unpublished, `app` network only — same
+  # containment as the updater. Access is equivalent to control of the Docker host, so Caddy on
+  # `edge` has no route here. Runs from the application image; an in-app update recreates it
+  # with api/worker/web so the supervisor stays on the same tag.
+  supervisor:
+    image: ${RAKAZO_IMAGE:-ghcr.io/millson1/rakazo/app}:${RAKAZO_IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
+    init: true
+    user: root
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    env_file:
+      - ../../.env
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      SUPERVISOR_HOST: "0.0.0.0"
+      SUPERVISOR_PORT: "7091"
+      DOCKER_SOCKET: /var/run/docker.sock
+      RAKAZO_COMPUTER_IMAGE: ${RAKAZO_COMPUTER_IMAGE:-rakazo/computer:local}
+      SANDBOX_SCREEN_NETWORK: internal
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/data
+    networks:
+      - app
+    depends_on:
+      computer:
+        condition: service_completed_successfully
+      data-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   api:
     # The tag is what the updater moves. `docker compose pull` fetches it, `up -d` recreates onto
     # it, and the previous tag stays in .env so a rollback is one redeploy rather than a rebuild.
@@ -55,7 +129,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-rakazo}
       DATA_DIR: /data
-      SANDBOX_PROVIDER: e2b
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       AGENT_RUNTIME: pi
       RAKAZO_UPDATER_URL: http://updater:7092
@@ -68,6 +143,10 @@ services:
       - data
     depends_on:
       postgres:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+      supervisor:
         condition: service_healthy
     healthcheck:
       test:
@@ -106,7 +185,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-rakazo}
       DATA_DIR: /data
-      SANDBOX_PROVIDER: e2b
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       AGENT_RUNTIME: pi
     volumes:
@@ -151,10 +231,11 @@ services:
         condition: service_healthy
 
   # The updater holds the Docker socket, which is root-equivalent on the host, so it is deliberately
-  # the narrowest service here: no `ports` (nothing on the host), and only the `app` network, so
-  # Caddy — which sits on `edge` — has no route to it. The API reaches it as http://updater:7092
-  # with the shared token. It is also the one service the update never recreates, because it is the
-  # process performing the update.
+  # the narrowest *update* service here: no `ports` (nothing on the host), and only the `app` network,
+  # so Caddy — which sits on `edge` — has no route to it. The API reaches it as http://updater:7092
+  # with the shared token. It is also the one socket-holder the update never recreates, because it is
+  # the process performing the update. The sandbox supervisor also mounts the socket (to spawn bot
+  # computers) under the same unpublished / app-network rules.
   updater:
     # Pinned separately from the application image: the updater does not recreate itself, so moving
     # its own version is an operator action, not something an update can do underneath itself.

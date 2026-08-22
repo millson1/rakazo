@@ -377,8 +377,8 @@ export function createUpdaterApp(config: UpdaterConfig) {
       steps,
       restartAdvice:
         decision.strategy === "pull"
-          ? "The updater pulled the new images and recreated the API, worker, and web containers. Migrations ran inside the new API container before it started serving."
-          : "The updater built the fork and recreated the API, worker, and web containers. Migrations ran inside the new API container before it started serving.",
+          ? "The updater pulled the new images and recreated the API, worker, web, and supervisor containers. Migrations ran inside the new API container before it started serving."
+          : "The updater built the fork and recreated the API, worker, web, and supervisor containers. Migrations ran inside the new API container before it started serving.",
     });
   }
 

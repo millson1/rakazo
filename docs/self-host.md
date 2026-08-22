@@ -53,8 +53,8 @@ Do not commit `.env`. Never put `COMPOSIO_API_KEY`, OpenRouter keys, or provider
 
 The Electron desktop app is a client of the same API and never decides where bots run. The provider is fixed by the operator at deploy time through `SANDBOX_PROVIDER`; a connected client cannot change it. Docker and E2B still apply.
 
-- **Docker** is the default for local use and the quickest self-hosted setup. Workspace bots share a persistent Team Computer by default; Private computers are optional. Keep the supervisor private, as the included Compose file does.
-- **E2B** runs bot computers away from the Rakazo host and is the recommended choice for public or multi-user production deployments. Rakazo checkpoints the portable workspace and browser-profile directory to `DATA_DIR`; the E2B disk is a runtime cache, not the durable source of truth.
+- **Docker** is the default for local use, production Compose, and the quickest self-hosted setup. Workspace bots share a persistent Team Computer by default; Private computers are optional. Keep the supervisor private, as the included Compose files do.
+- **E2B** is optional. Set `SANDBOX_PROVIDER=e2b` and `E2B_API_KEY` to run bot computers away from the Rakazo host (useful for public or multi-user deployments). Rakazo checkpoints the portable workspace and browser-profile directory to `DATA_DIR`; the E2B disk is a runtime cache, not the durable source of truth.
 - **Daytona** provides the same remote-computer contract through Daytona sandboxes. Configure `DAYTONA_API_KEY` and optionally `DAYTONA_API_URL` / `DAYTONA_TARGET`.
 - **Box by ASCII** provides a managed Linux desktop through `BOX_API_KEY` and optionally `BOX_API_URL`. Rakazo always creates or resumes boxes with `noEnv: true`, keeps the portable workspace under `/home/user/rakazo-home`, and refreshes a two-hour TTL. A Box currently exposes one shared desktop, so concurrent Team bots can still use shell and files but only one can use graphical tools at a time.
 - **Desktop provider** runs commands directly on the API/worker host under the service account, with working directories allowed anywhere under that account's home folder. There is no container boundary, so it is opt-in only through `SANDBOX_PROVIDER=desktop` and cannot be turned on from the app. Do not use it on a public or shared service.
@@ -70,9 +70,16 @@ This dumps Postgres (`pg_dump`) and archives `data/` into `backups/<stamp>/`.
 
 ## Public single-VM deployment
 
-`infra/compose/docker-compose.prod.yml` runs the hosted product with Postgres, the API, worker, web app,
-and automatic HTTPS through Caddy. It uses E2B for bot computers, so the VM never exposes a Docker
-supervisor or browser containers.
+`infra/compose/docker-compose.prod.yml` runs the hosted product with Postgres, the API, worker, web
+app, the Docker sandbox supervisor, and automatic HTTPS through Caddy. **Docker is the default**
+computer provider (`SANDBOX_PROVIDER` falls back to `docker`). E2B is optional: set
+`SANDBOX_PROVIDER=e2b` and `E2B_API_KEY` if you want remote desktops instead of sibling containers
+on this VM. The API already refuses to start the e2b provider without that key.
+
+The supervisor is unpublished and stays on the internal `app` network. It holds the Docker socket
+(same as the updater) so it can spawn `rakazo/computer` containers; Caddy on `edge` has no route to
+it. Keep the VM's Docker daemon private — access to the supervisor is equivalent to control of the
+host.
 
 Before deploying to a new Ubuntu host, create and verify a key-only `deploy` account, then apply the
 idempotent host-hardening baseline. It disables SSH passwords and root login, rate-limits SSH, allows
@@ -94,8 +101,9 @@ container logs, default no-new-privileges, and the kernel NAT path instead of Do
    from Cloudflare's [published IP ranges](https://www.cloudflare.com/ips/); reconcile those ranges
    whenever Cloudflare publishes a change. A Cloudflare Tunnel can replace the public web listeners.
 2. Clone the repository on the VM and create a root `.env` with production-only values. At minimum set
-   `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `E2B_API_KEY`, `OPENROUTER_API_KEY`,
+   `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `OPENROUTER_API_KEY`,
    `RAKAZO_HOST`, and the three public origins. Use URL-safe random values for database credentials.
+   `E2B_API_KEY` is not required unless you set `SANDBOX_PROVIDER=e2b`.
 3. Keep registration allowlisted while the service is private:
 
 ```env
@@ -108,7 +116,10 @@ WEB_ORIGIN=https://app.example.com
 API_URL=https://app.example.com
 SIGNUPS_ENABLED=true
 SIGNUP_ALLOWLIST=owner@example.com,reviewer@example.com
-SANDBOX_PROVIDER=e2b
+SANDBOX_PROVIDER=docker
+# Optional remote computers instead of Docker on this VM:
+# SANDBOX_PROVIDER=e2b
+# E2B_API_KEY=
 AGENT_RUNTIME=pi
 WAKEUP_DRIVER=graphile
 DATA_DIR=/data
@@ -129,10 +140,10 @@ curl --fail https://app.example.com/health
 ```
 
 **Build, do not pull, for a first deployment.** `RAKAZO_IMAGE_TAG` ships as `local`, a tag no
-registry serves, so the commands above build `api`, `worker`, `web`, and `updater` from the checkout
-you just cloned. Running `docker compose … pull` first — as earlier versions of this page told you
-to — fails outright with `error from registry: denied` whenever the tag you are on has not been
-published, and there is nothing to fall back to.
+registry serves, so the commands above build `api`, `worker`, `web`, `supervisor`, `updater`, and
+the `computer` image from the checkout you just cloned. Running `docker compose … pull` first — as
+earlier versions of this page told you to — fails outright with `error from registry: denied`
+whenever the tag you are on has not been published, and there is nothing to fall back to.
 
 Passing `GIT_SHA` is what makes `GET /health` report a `"revision"`; a locally built image has no
 other way to know its commit. Prebuilt images from the registry bake it in at publish time, so when
@@ -163,8 +174,8 @@ substitute for an encrypted off-host backup or provider snapshot.
 A Compose deployment on a published release tag upgrades by moving that tag:
 
 ```bash
-docker compose --env-file .env -f infra/compose/docker-compose.prod.yml pull api worker web
-docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d api worker web
+docker compose --env-file .env -f infra/compose/docker-compose.prod.yml pull api worker web supervisor
+docker compose --env-file .env -f infra/compose/docker-compose.prod.yml up -d api worker web supervisor
 ```
 
 A deployment on the default `local` tag has no registry to pull from, so it upgrades by rebuilding
@@ -173,13 +184,14 @@ the checkout instead:
 ```bash
 git pull
 docker compose --env-file .env -f infra/compose/docker-compose.prod.yml \
-  up -d --build api worker web
+  up -d --build api worker web supervisor
 ```
 
-`up -d` replaces the API, worker, and web containers together, so the three never disagree about
-which version they are. The API's start command runs `prisma migrate deploy` before it serves, which
-means migrations happen inside the new container, after the old one has stopped — the old process is
-never left talking to a new schema.
+`up -d` replaces the API, worker, web, and supervisor containers together, so they never disagree
+about which version they are. The API's start command runs `prisma migrate deploy` before it serves,
+which means migrations happen inside the new container, after the old one has stopped — the old
+process is never left talking to a new schema. Rebuild `computer` as well (`up -d --build computer`)
+when `infra/sandboxes/computer` changes.
 
 The updater sidecar has its own image and tag so that an update never recreates the container
 performing it. Move it deliberately:
@@ -203,7 +215,7 @@ this repository that is:
 
 | Image | Contents |
 | --- | --- |
-| `ghcr.io/millson1/rakazo/app` | api, worker, and web — one image, three commands |
+| `ghcr.io/millson1/rakazo/app` | api, worker, web, and the sandbox supervisor — one image, four commands |
 | `ghcr.io/millson1/rakazo/updater` | the updater sidecar, plus the Docker CLI |
 
 If you deploy from your own fork, set `RAKAZO_IMAGE` and `RAKAZO_UPDATER_IMAGE` to your namespace —
@@ -333,7 +345,8 @@ as that allows:
   internet and it cannot be reached through the reverse proxy.
 - Every route except `/health` requires the shared bearer token, compared in constant time.
 - The Docker CLI lives only in the updater image. The api, worker, and web containers keep
-  `cap_drop: ALL` and no socket.
+  `cap_drop: ALL` and no socket. The sandbox supervisor also mounts the socket (to spawn computers)
+  but is unpublished and on `app` only, like the updater.
 
 Set `RAKAZO_UPDATER_TOKEN` to a random value if you want update authority separate from
 `BETTER_AUTH_SECRET`, which it otherwise derives from. Set `RAKAZO_SELF_UPDATE=0` and drop the
@@ -372,7 +385,14 @@ To run a hosted product (same codebase):
 2. Provision managed Postgres 16 and run `pnpm db:migrate`.
 3. Run **API** and **worker** as always-on Node 22 services (Fly machines, a VM, ECS, k8s). Not lambda-style request handlers.
 4. Persist and back up `DATA_DIR` (bot homes, browser profiles, artifacts). Today the concrete store is a local filesystem (`LocalAgentHomeStore`), so attach a Rakazo-owned durable volume shared by API and worker processes. The storage contract is separate from the computer-provider contract, but an object-storage implementation is not wired yet.
-5. Choose computers: **`SANDBOX_PROVIDER=e2b`**, `daytona`, or `box` with the matching provider key for a public or multi-user production service. Each Team or Private Computer reconnects to its sandbox id (`providerRef`), while workspace state is checkpointed outside the provider at run completion, explicit stop, and idle suspension. If that sandbox is gone—or the deployment changes providers—the replacement is hydrated from Rakazo's copy. Idle computers pause after `SANDBOX_IDLE_MS` (default 10 minutes) and resume on the next message or Take control. Docker remains the local and trusted single-machine default.
+5. Choose computers: production Compose defaults to **Docker** on the VM (`SANDBOX_PROVIDER=docker`
+   plus the bundled supervisor). For a public or multi-user service that should not run desktops on
+   the Rakazo host, set `SANDBOX_PROVIDER=e2b` with `E2B_API_KEY`, or `daytona` / `box` with the
+   matching provider key. Each Team or Private Computer reconnects to its sandbox id (`providerRef`),
+   while workspace state is checkpointed outside the provider at run completion, explicit stop, and
+   idle suspension. If that sandbox is gone—or the deployment changes providers—the replacement is
+   hydrated from Rakazo's copy. Idle computers pause after `SANDBOX_IDLE_MS` (default 10 minutes) and
+   resume on the next message or Take control.
 6. A Hetzner CX22 (2 vCPU / 4 GB) is enough for API + worker + Postgres when E2B owns the desktops. 2 GB works for a quiet box; 8 GB is only needed if you also run Docker computers on that same machine.
 7. Set public HTTPS `WEB_ORIGIN` / `BETTER_AUTH_URL` / `API_URL`, secrets, and an OpenRouter (or other Pi) deployment key if you want to skip per-user model keys.
 8. Put the web app behind the same origin as `/api` and `/rpc` (Vite preview proxy, or a reverse proxy). Docker noVNC connections use short-lived signed `/novnc/*` capabilities; do not replace that route with an unrestricted port proxy.

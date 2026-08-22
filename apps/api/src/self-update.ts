@@ -537,7 +537,7 @@ function restartAdviceFor(
   supervisor: ReturnType<typeof detectRestartSupervisor>,
 ): string {
   if (mode === "sidecar") {
-    return "The updater sidecar recreates the API, worker, and web containers, so nothing here has to restart itself and no process supervisor is required.";
+    return "The updater sidecar recreates the API, worker, web, and supervisor containers, so nothing here has to restart itself and no process supervisor is required.";
   }
   if (mode === "unavailable") return "Updates are unavailable on this deployment.";
   return restartSupervisorAdvice(supervisor);

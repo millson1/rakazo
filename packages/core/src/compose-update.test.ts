@@ -164,6 +164,7 @@ describe("compose argv construction", () => {
         "api",
         "worker",
         "web",
+        "supervisor",
       ],
     });
   });
@@ -206,7 +207,7 @@ describe("compose argv construction", () => {
 
   it("names the services explicitly so a bare up cannot sweep the whole project", () => {
     const args = composeUpArgv(target).args;
-    expect(args.slice(-3)).toEqual(["api", "worker", "web"]);
+    expect(args.slice(-4)).toEqual(["api", "worker", "web", "supervisor"]);
   });
 });
 

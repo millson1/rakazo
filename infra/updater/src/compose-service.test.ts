@@ -25,8 +25,8 @@ const compose = parse(readFileSync(composeFile, "utf8")) as {
 const updater = compose.services.updater as ComposeService;
 
 /**
- * The updater holds the Docker socket, which is root-equivalent on the host. These are the
- * properties that keep that from being reachable by anything but the API, and they are easy to
+ * The updater and sandbox supervisor hold the Docker socket, which is root-equivalent on the host.
+ * These are the properties that keep that from being reachable from the edge, and they are easy to
  * break by accident in YAML, so they are asserted rather than reviewed.
  */
 describe("the updater compose service", () => {
@@ -45,13 +45,14 @@ describe("the updater compose service", () => {
     expect(compose.services.caddy?.networks).not.toContain("data");
   });
 
-  it("is the only service holding the Docker socket", () => {
+  it("shares the Docker socket only with the unpublished sandbox supervisor", () => {
     const withSocket = Object.entries(compose.services)
       .filter(([, service]) =>
         (service.volumes ?? []).some((volume) => volume.includes("docker.sock")),
       )
-      .map(([name]) => name);
-    expect(withSocket).toEqual(["updater"]);
+      .map(([name]) => name)
+      .sort();
+    expect(withSocket).toEqual(["supervisor", "updater"]);
   });
 
   it("is bind-mounted at the same path it has on the host", () => {
@@ -82,5 +83,29 @@ describe("the updater compose service", () => {
   it("does not let the api container reach the Docker socket to update itself", () => {
     expect(compose.services.api?.volumes ?? []).not.toContain("/var/run/docker.sock");
     expect(compose.services.api?.environment?.RAKAZO_UPDATER_URL).toBe("http://updater:7092");
+  });
+});
+
+describe("the production sandbox default", () => {
+  it("defaults SANDBOX_PROVIDER to docker instead of forcing e2b", () => {
+    expect(compose.services.api?.environment?.SANDBOX_PROVIDER).toBe("${SANDBOX_PROVIDER:-docker}");
+    expect(compose.services.worker?.environment?.SANDBOX_PROVIDER).toBe(
+      "${SANDBOX_PROVIDER:-docker}",
+    );
+  });
+
+  it("runs an unpublished supervisor on the app network so Docker computers work", () => {
+    const supervisor = compose.services.supervisor;
+    expect(supervisor).toBeDefined();
+    expect(supervisor?.ports).toBeUndefined();
+    expect(supervisor?.networks).toEqual(["app"]);
+    expect(supervisor?.image).toContain("RAKAZO_IMAGE_TAG");
+    expect(compose.services.computer?.image).toMatch(/computer/);
+    expect(compose.services.api?.environment?.SANDBOX_SUPERVISOR_URL).toBe(
+      "http://supervisor:7091",
+    );
+    expect(compose.services.worker?.environment?.SANDBOX_SUPERVISOR_URL).toBe(
+      "http://supervisor:7091",
+    );
   });
 });
