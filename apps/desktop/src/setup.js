@@ -103,6 +103,12 @@
       else localUrl.value = state.saved.serverUrl;
     }
     syncPanels();
+    if (state.savedUnreachable) {
+      setStatus(
+        "The saved server could not be reached. Choose a local or remote instance.",
+        "error",
+      );
+    }
     activeField().focus();
   }
 

@@ -56,6 +56,8 @@ export interface DesktopSetupState {
   defaultLocalUrl: string;
   platform: string;
   saved: DesktopSetup | null;
+  /** True when setup is shown again because the saved instance could not be reached. */
+  savedUnreachable?: boolean;
 }
 
 export interface DesktopReachability {

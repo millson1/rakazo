@@ -82,10 +82,16 @@ pnpm --filter @rakazo/desktop dev
 The desktop app is a client: it never runs a Rakazo server itself. On first run it asks whether the
 server is local (this computer, `http://127.0.0.1:5173`) or remote (an address you or your team
 already runs). Either way the app checks that the address answers before saving it, and later
-launches go straight to that instance. To run a server locally, follow the quick start above.
+launches go straight to that instance if it still answers. If the saved server is unreachable, setup
+runs again so you can pick a different address. To run a server locally, follow the quick start
+above.
 
-Set `RAKAZO_WEB_URL` to point the shell somewhere else without changing the saved instance, or
-`RAKAZO_FORCE_SETUP=1` to run setup again.
+The choice is stored in `setup.json` under Electron's user data directory (`%APPDATA%\Rakazo` on
+Windows, `~/Library/Application Support/Rakazo` on macOS, `~/.config/Rakazo` on Linux). Delete that
+file or set `RAKAZO_FORCE_SETUP=1` to choose again even while the saved server still answers.
+`pnpm --filter @rakazo/desktop dev` and the packaged app share this directory.
+
+Set `RAKAZO_WEB_URL` to point the shell somewhere else without changing the saved instance.
 
 Mobile build and release instructions live in [docs/mobile-release.md](./docs/mobile-release.md).
 

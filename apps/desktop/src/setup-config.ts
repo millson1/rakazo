@@ -81,6 +81,21 @@ export function resolveStartupTarget(input: {
   return { kind: "setup" };
 }
 
+/**
+ * A saved instance that no longer answers must not skip the picker. Env overrides
+ * (`RAKAZO_WEB_URL`) still skip this so tests and performance harnesses can point
+ * the shell at a fixture that is not a live Rakazo server.
+ */
+export function applySavedServerReachability(
+  target: StartupTarget,
+  reachable: boolean,
+): StartupTarget {
+  if (target.kind === "app" && target.source === "saved" && !reachable) {
+    return { kind: "setup" };
+  }
+  return target;
+}
+
 /** Turns a network failure into something a person can act on. */
 export function probeFailureMessage(error: unknown): string {
   const name = error instanceof Error ? error.name : "";

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -124,6 +124,23 @@ test("a verified instance is remembered so setup does not run again", async () =
   const relaunched = await app.firstWindow();
   await expect(relaunched.getByText(APP_MARKER)).toBeVisible();
   await expect(relaunched.locator("#setup")).toHaveCount(0);
+});
+
+test("an unreachable saved instance reopens setup instead of the login screen", async () => {
+  await writeFile(
+    path.join(userData, "setup.json"),
+    `${JSON.stringify({ mode: "local", serverUrl: closedUrl }, null, 2)}\n`,
+    "utf8",
+  );
+  app = await launch();
+  const setup = await app.firstWindow();
+
+  await expect(setup.getByRole("heading", { name: "Welcome to Rakazo" })).toBeVisible();
+  await expect(setup.locator("#status")).toHaveText(
+    "The saved server could not be reached. Choose a local or remote instance.",
+  );
+  await expect(setup.locator("#status")).toHaveAttribute("data-tone", "error");
+  await expect(setup.locator("#local-url")).toHaveValue(closedUrl);
 });
 
 test("an unreachable address is reported instead of being saved", async () => {

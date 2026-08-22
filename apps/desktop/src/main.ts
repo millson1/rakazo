@@ -19,6 +19,7 @@ import {
   isRendererAssetMiss,
 } from "./renderer-assets.js";
 import {
+  applySavedServerReachability,
   DEFAULT_LOCAL_WEB_URL,
   normalizeServerUrl,
   parseSetupInput,
@@ -36,6 +37,7 @@ let setupWindow: BrowserWindow | null = null;
 let bundledRendererInstalled = false;
 let currentSetup: DesktopSetup | null = null;
 let currentTargetUrl: string | null = null;
+let savedUnreachable = false;
 let quitting = false;
 let warmWindowTimer: NodeJS.Timeout | undefined;
 const WARM_WINDOW_TTL_MS = warmWindowTtlMs(process.env.RAKAZO_WARM_WINDOW_TTL_MS);
@@ -319,11 +321,18 @@ app.whenReady().then(async () => {
   }
   const userDataDir = app.getPath("userData");
   currentSetup = await readSetup(userDataDir);
-  const target = resolveStartupTarget({
+  let target = resolveStartupTarget({
     envUrl: process.env.RAKAZO_WEB_URL,
     saved: currentSetup,
     forceSetup: process.env.RAKAZO_FORCE_SETUP === "1",
   });
+  // Probe before installing the bundled renderer. That handler would otherwise
+  // answer GET on a dead localhost with the packaged UI and look healthy.
+  if (target.kind === "app" && target.source === "saved") {
+    const reachability = await probeServer(target.url);
+    savedUnreachable = !reachability.ok;
+    target = applySavedServerReachability(target, reachability.ok);
+  }
   if (target.kind === "app") currentTargetUrl = target.url;
 
   const icon = developmentIcon();
@@ -363,6 +372,7 @@ app.whenReady().then(async () => {
       defaultLocalUrl: DEFAULT_LOCAL_WEB_URL,
       platform: process.platform,
       saved: currentSetup,
+      savedUnreachable,
     };
   });
 
@@ -379,6 +389,7 @@ app.whenReady().then(async () => {
 
     await writeSetup(userDataDir, setup);
     currentSetup = setup;
+    savedUnreachable = false;
     // Answer the setup window before tearing it down, otherwise the reply is lost.
     setImmediate(() => void openApp(setup.serverUrl));
     return { ok: true };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySavedServerReachability,
   DEFAULT_LOCAL_WEB_URL,
   normalizeServerUrl,
   parseSetupInput,
@@ -109,6 +110,17 @@ describe("startup target", () => {
     expect(resolveStartupTarget({ saved: { mode: "local", serverUrl: "nope://x" } })).toEqual({
       kind: "setup",
     });
+  });
+
+  it("re-runs setup when a saved instance no longer answers", () => {
+    const target = resolveStartupTarget({ saved });
+    expect(applySavedServerReachability(target, false)).toEqual({ kind: "setup" });
+    expect(applySavedServerReachability(target, true)).toEqual(target);
+  });
+
+  it("does not probe an explicit RAKAZO_WEB_URL override", () => {
+    const target = resolveStartupTarget({ envUrl: "http://127.0.0.1:4321", saved });
+    expect(applySavedServerReachability(target, false)).toEqual(target);
   });
 });
 
