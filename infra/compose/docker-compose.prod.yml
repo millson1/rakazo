@@ -39,7 +39,7 @@ services:
     command:
       - bash
       - -lc
-      - pnpm --filter @rakazo/db exec prisma migrate deploy && pnpm --filter @rakazo/api start
+      - export DATABASE_URL="$$(node -e 'const e=process.env;const q=(s)=>encodeURIComponent(s||"");process.stdout.write(`postgres://$${q(e.POSTGRES_USER||"rakazo")}:$${q(e.POSTGRES_PASSWORD)}@postgres:5432/$${e.POSTGRES_DB||"rakazo"}`)')" && pnpm --filter @rakazo/db exec prisma migrate deploy && pnpm --filter @rakazo/api start
     init: true
     security_opt:
       - no-new-privileges:true
@@ -51,7 +51,9 @@ services:
       - ../../.env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-rakazo}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rakazo}
+      POSTGRES_USER: ${POSTGRES_USER:-rakazo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rakazo}
       DATA_DIR: /data
       SANDBOX_PROVIDER: e2b
       WAKEUP_DRIVER: graphile
@@ -85,7 +87,10 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-}
     restart: unless-stopped
-    command: ["pnpm", "--filter", "@rakazo/worker", "start"]
+    command:
+      - bash
+      - -lc
+      - export DATABASE_URL="$$(node -e 'const e=process.env;const q=(s)=>encodeURIComponent(s||"");process.stdout.write(`postgres://$${q(e.POSTGRES_USER||"rakazo")}:$${q(e.POSTGRES_PASSWORD)}@postgres:5432/$${e.POSTGRES_DB||"rakazo"}`)')" && pnpm --filter @rakazo/worker start
     init: true
     security_opt:
       - no-new-privileges:true
@@ -97,7 +102,9 @@ services:
       - ../../.env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-rakazo}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rakazo}
+      POSTGRES_USER: ${POSTGRES_USER:-rakazo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rakazo}
       DATA_DIR: /data
       SANDBOX_PROVIDER: e2b
       WAKEUP_DRIVER: graphile
