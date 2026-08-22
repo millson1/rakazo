@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applySavedServerReachability,
@@ -6,6 +7,8 @@ import {
   parseSetupInput,
   parseStoredSetup,
   probeFailureMessage,
+  PRODUCT_NAME,
+  productUserDataDir,
   resolveStartupTarget,
   serializeSetup,
   servesBundledRenderer,
@@ -79,6 +82,30 @@ describe("startup target", () => {
 
   it("runs setup on a first launch", () => {
     expect(resolveStartupTarget({})).toEqual({ kind: "setup" });
+  });
+
+  it("does not treat the development default URL as a packaged first-run target", () => {
+    expect(
+      resolveStartupTarget({
+        packaged: true,
+        envUrl: DEFAULT_LOCAL_WEB_URL,
+      }),
+    ).toEqual({ kind: "setup" });
+  });
+
+  it("packaged installs still open a reachable saved instance", () => {
+    expect(resolveStartupTarget({ saved, packaged: true, envUrl: DEFAULT_LOCAL_WEB_URL })).toEqual({
+      kind: "app",
+      url: "https://rakazo.example.com",
+      source: "saved",
+    });
+  });
+
+  it("puts userData under the product name, not the scoped package name", () => {
+    expect(PRODUCT_NAME).toBe("Rakazo");
+    expect(path.basename(productUserDataDir(path.join("Users", "me", "AppData", "Roaming")))).toBe(
+      "Rakazo",
+    );
   });
 
   it("opens the saved instance on later launches", () => {

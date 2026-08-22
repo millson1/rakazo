@@ -91,7 +91,9 @@ Windows, `~/Library/Application Support/Rakazo` on macOS, `~/.config/Rakazo` on 
 file or set `RAKAZO_FORCE_SETUP=1` to choose again even while the saved server still answers.
 `pnpm --filter @rakazo/desktop dev` and the packaged app share this directory.
 
-Set `RAKAZO_WEB_URL` to point the shell somewhere else without changing the saved instance.
+Set `RAKAZO_WEB_URL` while developing to point the unpackaged shell somewhere else without
+changing the saved instance. Packaged installers ignore that override so first run always
+opens the instance picker unless a reachable `setup.json` already exists.
 
 Mobile build and release instructions live in [docs/mobile-release.md](./docs/mobile-release.md).
 

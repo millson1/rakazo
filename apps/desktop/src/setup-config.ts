@@ -1,9 +1,20 @@
+import path from "node:path";
 import type { DesktopSetup } from "@rakazo/contracts";
 
 /** Where `pnpm dev` serves the Rakazo web app on this machine. */
 export const DEFAULT_LOCAL_WEB_URL = "http://127.0.0.1:5173";
 
 export const SETUP_FILE_NAME = "setup.json";
+
+/**
+ * electron-builder `productName`. Electron's default userData otherwise follows
+ * package.json `name` (`@rakazo/desktop` → `%APPDATA%/@rakazo/desktop`).
+ */
+export const PRODUCT_NAME = "Rakazo";
+
+export function productUserDataDir(appDataDir: string): string {
+  return path.join(appDataDir, PRODUCT_NAME);
+}
 
 export type StartupTarget =
   | { kind: "app"; url: string; source: "env" | "saved" }
@@ -60,18 +71,21 @@ export function serializeSetup(setup: DesktopSetup): string {
 }
 
 /**
- * Decides between the first-run setup window and the app window. An explicit
- * `RAKAZO_WEB_URL` still wins over saved configuration so test and performance
- * harnesses can point the shell anywhere without touching a user's real setup.
+ * Decides between the first-run setup window and the app window. Unpackaged
+ * `RAKAZO_WEB_URL` still wins so test and performance harnesses can point the
+ * shell anywhere. Packaged installs ignore that override: first run and an
+ * unreachable saved server must open the instance picker, never a default
+ * `http://127.0.0.1:5173` plus the bundled marketing/auth UI.
  */
 export function resolveStartupTarget(input: {
   envUrl?: string;
   saved?: DesktopSetup | null;
   forceSetup?: boolean;
+  packaged?: boolean;
 }): StartupTarget {
   if (input.forceSetup === true) return { kind: "setup" };
 
-  const envUrl = input.envUrl?.trim();
+  const envUrl = input.packaged === true ? undefined : input.envUrl?.trim();
   if (envUrl !== undefined && envUrl !== "") return { kind: "app", url: envUrl, source: "env" };
 
   if (input.saved != null) {

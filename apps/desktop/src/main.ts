@@ -24,6 +24,8 @@ import {
   normalizeServerUrl,
   parseSetupInput,
   probeFailureMessage,
+  PRODUCT_NAME,
+  productUserDataDir,
   resolveStartupTarget,
   servesBundledRenderer,
 } from "./setup-config.js";
@@ -55,6 +57,11 @@ markOnce("rk:main:module-evaluated");
 if (PERFORMANCE_USER_DATA) {
   app.setPath("userData", PERFORMANCE_USER_DATA);
   app.setPath("sessionData", path.join(PERFORMANCE_USER_DATA, "session"));
+} else {
+  app.setName(PRODUCT_NAME);
+  const userData = productUserDataDir(app.getPath("appData"));
+  app.setPath("userData", userData);
+  app.setPath("sessionData", userData);
 }
 app.once("will-finish-launching", () => markOnce("rk:main:will-finish-launching"));
 app.once("ready", () => markOnce("rk:main:ready"));
@@ -325,6 +332,7 @@ app.whenReady().then(async () => {
     envUrl: process.env.RAKAZO_WEB_URL,
     saved: currentSetup,
     forceSetup: process.env.RAKAZO_FORCE_SETUP === "1",
+    packaged: app.isPackaged,
   });
   // Probe before installing the bundled renderer. That handler would otherwise
   // answer GET on a dead localhost with the packaged UI and look healthy.

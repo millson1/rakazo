@@ -50,7 +50,8 @@
       }
     ],
     "extraMetadata": {
-      "main": "dist/main.js"
+      "main": "dist/main.js",
+      "name": "Rakazo"
     },
     "mac": {
       "icon": "assets/icon.icns",
