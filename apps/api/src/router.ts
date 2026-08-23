@@ -401,6 +401,21 @@ export function createRouter(deps: RouterDeps) {
         );
         return { ok: true as const };
       }),
+      setSummary: authed.models.setSummary.handler(async ({ input }) => {
+        await deps.prisma.deploymentSettings.upsert({
+          where: { id: "default" },
+          update: {
+            summaryModelProvider: input.provider,
+            summaryModelId: input.modelId,
+          },
+          create: {
+            id: "default",
+            summaryModelProvider: input.provider,
+            summaryModelId: input.modelId,
+          },
+        });
+        return { ok: true as const };
+      }),
       addKey: authed.models.addKey.handler(async ({ context, input }) => {
         const credential = await findWorkspaceModelCredential(
           deps.prisma,
@@ -1088,13 +1103,13 @@ export function createRouter(deps: RouterDeps) {
             controlBotId: null,
           },
         });
-        if (controlBot.thread && controlChanged) {
+        if (controlBot.thread && (controlChanged || input.reason)) {
           await deps.events.append({
             workspaceId: context.actor.workspaceId,
             threadId: controlBot.thread.id,
             botId: controlBot.id,
             type: "computer.takeover.released",
-            payload: { holder: "bot", reason: "released" },
+            payload: { holder: "bot", reason: input.reason ?? "released" },
           });
         }
         const waiting = await deps.prisma.run.findFirst({
@@ -1980,6 +1995,8 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     needsModel: !cred && !hasDeployment,
     defaultProvider: cred?.provider ?? settings?.defaultModelProvider ?? deps.env.defaultProvider,
     defaultModel: cred?.defaultModel ?? settings?.defaultModelId ?? deps.env.defaultModel,
+    summaryProvider: settings?.summaryModelProvider ?? null,
+    summaryModel: settings?.summaryModelId ?? null,
   };
 }
 
@@ -2180,6 +2197,8 @@ async function deploymentDto(prisma: PrismaClient) {
     hasDeploymentModelCredential: Boolean(settings?.deploymentModelCredentialCipher),
     defaultProvider: settings?.defaultModelProvider ?? null,
     defaultModel: settings?.defaultModelId ?? null,
+    summaryProvider: settings?.summaryModelProvider ?? null,
+    summaryModel: settings?.summaryModelId ?? null,
   };
 }
 

@@ -150,6 +150,8 @@ model DeploymentSettings {
   signupAllowlist                String   @default("")
   defaultModelProvider           String?
   defaultModelId                 String?
+  summaryModelProvider           String?
+  summaryModelId                 String?
   deploymentModelCredentialCipher String?
   updateRepoUrl                  String?
   updateBranch                   String?

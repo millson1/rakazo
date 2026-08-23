@@ -141,6 +141,9 @@ export const appContract = {
     setDefault: oc
       .input(z.object({ provider: z.string(), modelId: z.string() }))
       .output(z.object({ ok: z.literal(true) })),
+    setSummary: oc
+      .input(z.object({ provider: z.string(), modelId: z.string() }))
+      .output(z.object({ ok: z.literal(true) })),
     addKey: oc
       .input(
         z.object({
@@ -251,7 +254,14 @@ export const appContract = {
     boot: oc.input(botId).output(ComputerStatusSchema),
     stop: oc.input(botId).output(ComputerStatusSchema),
     takeover: oc.input(botId).output(z.object({ leaseId: Id, expiresAt: z.string() })),
-    release: oc.input(botId).output(z.object({ ok: z.literal(true) })),
+    release: oc
+      .input(
+        z.object({
+          botId: Id,
+          reason: z.enum(["done", "skipped"]).optional(),
+        }),
+      )
+      .output(z.object({ ok: z.literal(true) })),
     input: oc
       .input(
         z.object({

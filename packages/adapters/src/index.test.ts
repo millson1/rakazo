@@ -28,6 +28,15 @@ describe("scripted runtime", () => {
     const script = inferScript("install the cli and sign in", "takeover");
     expect(script?.some((t) => t.takeover)).toBe(false);
     expect(script?.some((t) => t.complete)).toBe(true);
+    expect(script?.some((t) => t.assistant?.toLowerCase().includes("signed in"))).toBe(true);
+  });
+
+  it("resumes a skipped takeover without treating login as done", () => {
+    const script = inferScript("install the cli and sign in", "takeover-skipped");
+    expect(script?.some((t) => t.takeover)).toBe(false);
+    expect(script?.some((t) => t.complete)).toBe(true);
+    expect(script?.some((t) => t.assistant?.toLowerCase().includes("skipped"))).toBe(true);
+    expect(script?.some((t) => t.assistant?.toLowerCase().includes("signed in"))).toBe(false);
   });
 
   it("routes destination/crm work through the connector", () => {
@@ -133,6 +142,7 @@ describe("builtin tools", () => {
         "write_file",
         "attach_file",
         "shell",
+        "say",
         "remember",
         "request_takeover",
         "run_subagent",

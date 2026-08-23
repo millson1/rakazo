@@ -83,6 +83,8 @@ export function reasoningToolTitle(name: string, args: Record<string, unknown> =
       return "Using the computer";
     case "launch_app":
       return args.application ? `Opening ${String(args.application)}` : "Opening an app";
+    case "say":
+      return "Sending an update";
     case "remember":
       return "Saving a memory";
     case "request_takeover":

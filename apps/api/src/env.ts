@@ -30,6 +30,8 @@ export interface AppEnv {
   composioApiKey: string | undefined;
   defaultProvider: string;
   defaultModel: string;
+  summaryProvider: string;
+  summaryModel: string | undefined;
   wakeupDriver: string;
   port: number;
   gitSha: string | undefined;
@@ -66,6 +68,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     composioApiKey: source.COMPOSIO_API_KEY,
     defaultProvider: source.PI_DEFAULT_PROVIDER ?? "openrouter",
     defaultModel: source.PI_DEFAULT_MODEL ?? "deepseek/deepseek-v4-flash-0731",
+    summaryProvider: optional(source.PI_SUMMARY_PROVIDER) ?? "openrouter",
+    summaryModel: optional(source.PI_SUMMARY_MODEL),
     wakeupDriver: source.WAKEUP_DRIVER ?? "graphile",
     port: Number(source.API_PORT ?? 3100),
     gitSha: optional(source.GIT_SHA) ?? optional(source.RAKAZO_GIT_SHA),

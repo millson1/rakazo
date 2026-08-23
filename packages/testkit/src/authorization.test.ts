@@ -68,6 +68,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["models/finishOAuth", { loginId: "missing-login" }],
       ["models/cancelOAuth", { loginId: "missing-login" }],
       ["models/setDefault", { provider: "test", modelId: "test/model" }],
+      ["models/setSummary", { provider: "test", modelId: "test/model" }],
       ["models/addKey", { provider: "test", apiKey: "not-a-real-key" }],
       ["models/removeKey", { provider: "test", keyId: "missing-key" }],
       ["models/setActiveKey", { provider: "test", keyId: "missing-key" }],

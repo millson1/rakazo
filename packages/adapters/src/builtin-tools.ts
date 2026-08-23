@@ -139,6 +139,16 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "say",
+    description:
+      "Send a short human-like update as its own message in the current thread. You may call this more than once this turn.",
+    inputSchema: {
+      type: "object",
+      properties: { text: { type: "string", description: "Short update to post." } },
+      required: ["text"],
+    },
+  },
+  {
     name: "remember",
     description: "Store a durable fact in this bot's explicit memory.",
     inputSchema: {
@@ -219,7 +229,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "post_to_channel",
     description:
-      "Post a message to a channel you belong to. Use this to answer when you were mentioned in a channel. Everyone in the channel sees it, so keep it short and speak only for yourself.",
+      "Post a message to a channel you belong to. Use this to answer when you were mentioned in a channel. @Name pulls that member into the conversation. Everyone in the channel sees it, so keep it short and speak only for yourself.",
     inputSchema: {
       type: "object",
       properties: {

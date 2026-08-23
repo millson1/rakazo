@@ -1,6 +1,7 @@
 import type { AgentRuntime, JobPublisher } from "@rakazo/adapter-kit";
 import { historyCompactJob } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
+import { resolveSummaryModel } from "./summary-model.js";
 import {
   saveSupermemoryMemory as defaultSaveSupermemoryMemory,
   MAX_RECALLED_MEMORIES,
@@ -66,8 +67,6 @@ export const MAX_TRANSCRIPT_CHARS = 40_000;
 /** Bounds a hung summarization call, which would otherwise hold a background-worker slot open. */
 const SUMMARIZE_TIMEOUT_MS = 120_000;
 
-const DEFAULT_SUMMARIZER_MODEL_ID = "deepseek/deepseek-v4-flash-0731";
-
 export interface CompactHistoryDeps {
   prisma: PrismaClient;
   runtime: AgentRuntime;
@@ -105,29 +104,18 @@ export async function compactHistory(deps: CompactHistoryDeps, threadId: string)
       ? fullTranscript.slice(-MAX_TRANSCRIPT_CHARS)
       : fullTranscript;
 
-  // Platform default (OpenRouter) when a usable cloud credential exists. Otherwise fall back to
-  // the deployment's own configured default model — this is how a keyless local-mlx/Ollama model
-  // set up during onboarding gets used for compaction too, rather than silently doing nothing.
-  // "scripted" means nothing at all is configured: ScriptedAgentRuntime answers by echoing canned
-  // text keyed off the prompt, so summarizing with it would save nonsense to Supermemory and
-  // advance the cursor past messages that are then lost from both stores. Skip instead.
-  const model = deps.deploymentModelKey
-    ? {
-        provider: "openrouter",
-        id: process.env.PI_DEFAULT_MODEL ?? DEFAULT_SUMMARIZER_MODEL_ID,
-        apiKey: deps.deploymentModelKey,
-      }
-    : await (async () => {
-        const settings = await deps.prisma.deploymentSettings.findUnique({
-          where: { id: "default" },
-        });
-        return {
-          provider: settings?.defaultModelProvider ?? "scripted",
-          id: settings?.defaultModelId ?? "scripted",
-          apiKey: undefined,
-        };
-      })();
-  if (model.provider === "scripted") {
+  // Prefer the configured summary model, then PI_SUMMARY_*, then the cheap cloud default when a
+  // deployment key exists. Workspace default is only for keyless local mlx/Ollama. Never scripted.
+  const settings = await deps.prisma.deploymentSettings.findUnique({
+    where: { id: "default" },
+  });
+  const model = resolveSummaryModel({
+    settings,
+    env: process.env,
+    deploymentModelKey: deps.deploymentModelKey,
+    allowWorkspaceDefault: true,
+  });
+  if (!model) {
     console.log(`history.compact skipped for thread ${threadId}: no usable summarizer model`);
     return;
   }

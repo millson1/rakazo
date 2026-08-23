@@ -605,7 +605,7 @@ export async function finalizeRun(
     });
     if (task.count !== 1) throw new Error("Run task was not available to finalize");
 
-    if (input.outcome === "completed") {
+    if (input.outcome === "completed" && input.blocks.length > 0) {
       const message = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "bot",
@@ -620,7 +620,7 @@ export async function finalizeRun(
         runId: input.runId,
         payload: { messageId: message.id, role: "bot", blocks: input.blocks },
       });
-    } else {
+    } else if (input.outcome !== "completed") {
       const blocks = [{ kind: "text" as const, text: input.error }];
       const message = await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,

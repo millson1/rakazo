@@ -106,6 +106,18 @@ describe("loadEnv", () => {
     );
   });
 
+  it("keeps the summary model optional so the cheap default stays in the resolver", () => {
+    expect(loadEnv(base).summaryProvider).toBe("openrouter");
+    expect(loadEnv(base).summaryModel).toBeUndefined();
+    expect(
+      loadEnv({
+        ...base,
+        PI_SUMMARY_PROVIDER: "openrouter",
+        PI_SUMMARY_MODEL: "moonshotai/kimi-k2",
+      }).summaryModel,
+    ).toBe("moonshotai/kimi-k2");
+  });
+
   it("derives the updater token from the auth secret unless one is set", () => {
     expect(loadEnv(base).updaterToken).toBe(loadEnv(base).authSecret);
     expect(loadEnv({ ...base, RAKAZO_UPDATER_TOKEN: "updater-only" }).updaterToken).toBe(

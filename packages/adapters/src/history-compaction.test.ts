@@ -97,7 +97,12 @@ type HarnessMessage = {
 function compactionHarness(
   options: {
     deploymentModelKey?: string;
-    settings?: { defaultModelProvider: string | null; defaultModelId: string | null } | null;
+    settings?: {
+      defaultModelProvider: string | null;
+      defaultModelId: string | null;
+      summaryModelProvider?: string | null;
+      summaryModelId?: string | null;
+    } | null;
     messages?: HarnessMessage[];
     nextMessageSeq?: number;
   } = {},
@@ -218,21 +223,42 @@ describe("compactHistory", () => {
     });
   });
 
-  it("uses PI_DEFAULT_MODEL as the platform default summarizer when it is configured", async () => {
+  it("uses PI_SUMMARY_MODEL as the platform summarizer when it is configured", async () => {
     const harness = compactionHarness({ deploymentModelKey: "openrouter-key" });
-    const previous = process.env.PI_DEFAULT_MODEL;
-    process.env.PI_DEFAULT_MODEL = "moonshotai/kimi-k2";
+    const previous = process.env.PI_SUMMARY_MODEL;
+    process.env.PI_SUMMARY_MODEL = "moonshotai/kimi-k2";
     try {
       await compactHistory(harness.deps, "thread-1");
     } finally {
-      if (previous === undefined) delete process.env.PI_DEFAULT_MODEL;
-      else process.env.PI_DEFAULT_MODEL = previous;
+      if (previous === undefined) delete process.env.PI_SUMMARY_MODEL;
+      else process.env.PI_SUMMARY_MODEL = previous;
     }
 
     const [request] = harness.runtime.run.mock.calls[0]!;
     expect(request.model).toEqual({
       provider: "openrouter",
       id: "moonshotai/kimi-k2",
+      apiKey: "openrouter-key",
+    });
+  });
+
+  it("uses summaryModelId rather than the workspace or bot default", async () => {
+    const harness = compactionHarness({
+      deploymentModelKey: "openrouter-key",
+      settings: {
+        defaultModelProvider: "openrouter",
+        defaultModelId: "anthropic/claude-sonnet-4",
+        summaryModelProvider: "openrouter",
+        summaryModelId: "google/gemini-2.5-flash",
+      },
+    });
+
+    await compactHistory(harness.deps, "thread-1");
+
+    const [request] = harness.runtime.run.mock.calls[0]!;
+    expect(request.model).toEqual({
+      provider: "openrouter",
+      id: "google/gemini-2.5-flash",
       apiKey: "openrouter-key",
     });
   });

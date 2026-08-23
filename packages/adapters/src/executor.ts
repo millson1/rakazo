@@ -43,7 +43,7 @@ import {
 } from "@rakazo/db";
 import { messageBot } from "./bot-messages.js";
 import { builtinAgentTools } from "./builtin-tools.js";
-import { postBotChannelMessage } from "./channels.js";
+import { channelIdFromWakePrompt, postBotChannelMessage } from "./channels.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
 import {
   collectLogIds,
@@ -89,6 +89,7 @@ import {
   secretValuesToRedact,
   serializeModelSecret,
 } from "./pi-oauth.js";
+import { handleSayTool, publishRunStatusIfDue } from "./run-status.js";
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import {
@@ -96,6 +97,10 @@ import {
   searchSupermemory,
   supermemoryContainerTag,
 } from "./supermemory-client.js";
+import {
+  takeoverReleaseReasonFromPayload,
+  takeoverResumeFromRelease,
+} from "./takeover-resume.js";
 import { getActiveTeachingSession, parsePlaybook } from "./teaching-session.js";
 import {
   attachWorkspaceFileToThread,
@@ -253,6 +258,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
       if (!run) return;
       if (isTerminal(run.status as RunStatus)) return;
       const resumeFromTakeover = run.status === "waiting_takeover";
+      const takeoverResume = resumeFromTakeover
+        ? takeoverResumeFromRelease(
+            takeoverReleaseReasonFromPayload(
+              (
+                await deps.prisma.event.findFirst({
+                  where: { botId: run.botId, type: "computer.takeover.released" },
+                  orderBy: [{ createdAt: "desc" }, { seq: "desc" }],
+                  select: { payload: true },
+                })
+              )?.payload,
+            ),
+          )
+        : null;
 
       const fence = nextFence(run.leaseFence);
       const now = new Date();
@@ -327,6 +345,29 @@ export function createRunExecutor(deps: ExecutorDeps) {
       let retainComputerLease = false;
       let screenRelease: { computer: ComputerRef; context: AdapterContext } | undefined;
       let runAbortController: AbortController | null = null;
+      const live = {
+        reasoningSteps: [] as ReasoningStep[],
+        assembled: "",
+        pendingProgress: "",
+        lastSayAt: 0,
+        sayPublished: false,
+        lastStatusAt: 0,
+        statusBusy: false,
+        startedAt: current.startedAt?.getTime() ?? Date.now(),
+        context: null as null | {
+          settings: {
+            summaryModelProvider?: string | null;
+            summaryModelId?: string | null;
+            defaultModelProvider?: string | null;
+            defaultModelId?: string | null;
+          } | null;
+          adapterContext: AdapterContext;
+          botId: string;
+          threadId: string;
+          secrets: string[];
+          run: { id: string; workspaceId: string; threadId: string; botId: string };
+        },
+      };
       const heartbeat = setInterval(() => {
         void Promise.all([
           renewRunLease(deps, runId, workerId, fence),
@@ -341,6 +382,45 @@ export function createRunExecutor(deps: ExecutorDeps) {
           .catch(() => {
             leaseValid = false;
             runAbortController?.abort();
+          });
+        if (!live.context || live.statusBusy) return;
+        live.statusBusy = true;
+        void publishRunStatusIfDue({
+          now: Date.now(),
+          startedAt: live.startedAt,
+          lastSayAt: live.lastSayAt,
+          lastStatusAt: live.lastStatusAt,
+          steps: live.reasoningSteps,
+          settings: live.context.settings,
+          deploymentModelKey: deps.deploymentModelKey,
+          runtime: deps.runtime,
+          context: live.context.adapterContext,
+          botId: live.context.botId,
+          threadId: live.context.threadId,
+          runId,
+          secrets: live.context.secrets,
+          publish: async (text) => {
+            await publishMessage(deps, live.context!.run, "bot", [{ kind: "text", text }]);
+          },
+          restoreDraft: async () => {
+            const draft = live.assembled.trim();
+            if (!draft || !live.context) return;
+            await deps.events.append({
+              workspaceId: live.context.run.workspaceId,
+              threadId: live.context.threadId,
+              botId: live.context.botId,
+              type: "thread.progress",
+              runId,
+              payload: { text: redactSecrets(draft, live.context.secrets), streaming: true },
+            });
+          },
+        })
+          .then((result) => {
+            if (result === "published") live.lastStatusAt = Date.now();
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            live.statusBusy = false;
           });
       }, 60_000);
       heartbeat.unref?.();
@@ -429,6 +509,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
           screenLeaseId: screenLeaseIdForRun(computerLease, runId, fence),
           signal: runAbortController.signal,
           connectedProviders: connectedPlugins.map((row) => row.provider),
+        };
+        live.context = {
+          settings,
+          adapterContext: context,
+          botId: bot.id,
+          threadId: thread.id,
+          secrets: runSecrets,
+          run,
         };
 
         await deps.events.append({
@@ -530,6 +618,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : "No other bots in this workspace yet. spawn_bot creates one.";
 
         let assembled = "";
+        let postedToChannel = false;
         let pendingProgress = "";
         let lastProgressAt = 0;
         let lastReasoningAt = 0;
@@ -553,7 +642,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         };
         const scripted = deps.runtime.describe().capabilities.scripted;
         const script = scripted
-          ? inferScript(task.prompt, resumeFromTakeover ? "takeover" : undefined)
+          ? inferScript(task.prompt, takeoverResume?.checkpoint)
           : undefined;
         const formatObservation = (
           observation: Awaited<ReturnType<SandboxProvider["observe"]>>,
@@ -574,6 +663,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
             : await recordEffect(deps, run, name, executionId, args);
           if (applied?.duplicate) {
             if (applied.effect.status === "completed") {
+              if (name === "post_to_channel" && channelPostSucceeded(applied.effect.result)) {
+                postedToChannel = true;
+              }
               return applied.effect.result ?? { duplicate: true };
             }
             if (name !== "spawn_bot" && name !== "archive_bot" && name !== "delete_bot") {
@@ -781,6 +873,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 : { ok: true };
             }, finish);
           }
+          if (name === "say") {
+            const result = await handleSayTool({
+              args,
+              secrets: runSecrets,
+              publish: async (text) => {
+                await publishMessage(deps, run, "bot", [{ kind: "text", text }]);
+              },
+            });
+            if ("ok" in result) {
+              assembled = "";
+              pendingProgress = "";
+              live.assembled = "";
+              live.pendingProgress = "";
+              live.lastSayAt = Date.now();
+              live.sayPublished = true;
+            }
+            return finish(result);
+          }
           if (name === "remember") {
             await deps.memory.commit(
               {
@@ -863,13 +973,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return finish(delivered);
           }
           if (name === "post_to_channel") {
-            const posted = await postBotChannelMessage(deps.prisma, {
-              workspaceId: run.workspaceId,
-              channelId: String(args.channel_id ?? args.channelId ?? ""),
-              botId: bot.id,
-              text: String(args.text ?? ""),
-              sourceRunId: runId,
-            });
+            const posted = await postBotChannelMessage(
+              { prisma: deps.prisma, jobs: deps.jobs },
+              {
+                workspaceId: run.workspaceId,
+                userId: run.userId,
+                channelId: String(args.channel_id ?? args.channelId ?? ""),
+                botId: bot.id,
+                text: String(args.text ?? ""),
+                sourceRunId: runId,
+              },
+            );
+            if (channelPostSucceeded(posted)) postedToChannel = true;
             return finish(posted);
           }
           if (name === "archive_bot" || name === "delete_bot") {
@@ -960,12 +1075,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const invokedSkill = savedSkills.find((skill) =>
           promptInvokesSkill(taskPrompt, skill.name || skill.goal),
         );
-        const prompt = invokedSkill
+        const basePrompt = invokedSkill
           ? `${formatSkillRunPrompt(
               invokedSkill.name || invokedSkill.goal.slice(0, 80),
               parsePlaybook(invokedSkill.playbook),
             )}\n\n${taskPrompt}`
           : taskPrompt;
+        const prompt = takeoverResume
+          ? `${basePrompt}\n\n${takeoverResume.promptNote}`
+          : basePrompt;
 
         reasoningSteps = upsertReasoningStep(reasoningSteps, {
           id: "status",
@@ -973,6 +1091,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           title: "Starting",
           status: "running",
         });
+        live.reasoningSteps = reasoningSteps;
         await publishReasoning(true);
 
         try {
@@ -987,6 +1106,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   `You are ${bot.name}${bot.title.trim() ? `, ${bot.title.trim()}` : ""}.`,
                   bot.instructions.trim() || bot.description.trim() || undefined,
                   "Operate like a true agent: terse, concrete, no filler. Do the work. Don't recap the ask. Don't preview a plan. After tools, report the outcome in one or two lines.",
+                  "Send short updates as separate `say` messages, not one essay. You may call say more than once this turn.",
                 ]
                   .filter((line): line is string => Boolean(line))
                   .join("\n"),
@@ -1017,7 +1137,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   ? { credential: resolved.oauth, persist: resolved.persistOAuth }
                   : undefined,
               },
-              resumeFromCheckpoint: resumeFromTakeover ? "takeover" : undefined,
+              resumeFromCheckpoint: takeoverResume?.checkpoint,
               script,
               executeTool: scripted ? undefined : applyTool,
             },
@@ -1044,6 +1164,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
             if (event.type === "text") {
               assembled += event.text;
+              live.assembled = assembled;
               pendingProgress += progressRedactor.push(event.text);
               const now = Date.now();
               if (!scripted && pendingProgress && now - lastProgressAt >= STREAM_FLUSH_MS) {
@@ -1076,6 +1197,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   : undefined,
               };
               reasoningSteps = upsertReasoningStep(reasoningSteps, step);
+              live.reasoningSteps = reasoningSteps;
               await publishReasoning(event.step.status === "done");
             } else if (event.type === "ask") {
               if (!(await renewRunLease(deps, runId, workerId, fence))) return;
@@ -1171,6 +1293,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 detail: reasoningToolDetail(event.name, event.args),
                 status: event.status === "done" ? "done" : "running",
               });
+              live.reasoningSteps = reasoningSteps;
               await publishReasoning(event.status === "done");
               if (scripted) await applyTool(event.name, event.args, event.executionId);
             } else if (event.type === "subagent") {
@@ -1222,9 +1345,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               });
             } else if (event.type === "done") {
               assembled = assembled || event.text || assembled;
+              live.assembled = assembled;
               reasoningSteps = reasoningSteps.map((step) =>
                 step.status === "running" ? { ...step, status: "done" as const } : step,
               );
+              live.reasoningSteps = reasoningSteps;
               await publishReasoning(true);
             }
           }
@@ -1267,14 +1392,27 @@ export function createRunExecutor(deps: ExecutorDeps) {
           terminalCheckpointComplete = true;
 
           const assembledText = assembled.trim();
-          if (!assembledText) {
+          if (!assembledText && !live.sayPublished) {
             throw new Error("The model returned no text");
           }
-          const text = redactSecrets(assembledText, runSecrets);
-          if (containsSecret(text, runSecrets)) {
-            throw new Error("refusing to persist a secret in the thread");
+          let text = "";
+          if (assembledText) {
+            text = redactSecrets(assembledText, runSecrets);
+            if (containsSecret(text, runSecrets)) {
+              throw new Error("refusing to persist a secret in the thread");
+            }
           }
           if (!(await renewRunLease(deps, runId, workerId, fence))) return;
+          if (run.trigger === "channel" && !postedToChannel && text) {
+            await autoPostChannelReply(deps, {
+              runId,
+              workspaceId: run.workspaceId,
+              userId: run.userId,
+              botId: bot.id,
+              prompt: task.prompt,
+              text,
+            });
+          }
           const completedBlocks: MessageBlock[] = [];
           if (reasoningSteps.length) {
             completedBlocks.push({
@@ -1284,7 +1422,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ),
             });
           }
-          completedBlocks.push({ kind: "text", text });
+          if (text) completedBlocks.push({ kind: "text", text });
           const completed = await deps.events.finalizeRun({
             workspaceId: run.workspaceId,
             threadId: thread.id,
@@ -1302,7 +1440,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             await notifyRun(deps, run, {
               kind: "completion",
               title: `${bot.name} finished`,
-              body: text.slice(0, 180),
+              body: (text || "Done.").slice(0, 180),
               botId: bot.id,
               threadId: thread.id,
             });
@@ -1451,6 +1589,53 @@ async function notifyRun(
     .catch((error) => {
       console.error("run notification", error);
     });
+}
+
+function channelPostSucceeded(result: unknown): boolean {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "ok" in result &&
+    (result as { ok: unknown }).ok === true
+  );
+}
+
+async function autoPostChannelReply(
+  deps: ExecutorDeps,
+  input: {
+    runId: string;
+    workspaceId: string;
+    userId: string;
+    botId: string;
+    prompt: string;
+    text: string;
+  },
+): Promise<void> {
+  const existing = await deps.prisma.channelMessage.findFirst({
+    where: { sourceRunId: input.runId },
+    select: { id: true },
+  });
+  if (existing) return;
+  const channelId = channelIdFromWakePrompt(input.prompt);
+  if (!channelId) return;
+  try {
+    const posted = await postBotChannelMessage(
+      { prisma: deps.prisma, jobs: deps.jobs },
+      {
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        channelId,
+        botId: input.botId,
+        text: input.text,
+        sourceRunId: input.runId,
+      },
+    );
+    if (!channelPostSucceeded(posted) && posted && "error" in posted) {
+      console.error("channel auto-post", posted.error);
+    }
+  } catch (error) {
+    console.error("channel auto-post", error);
+  }
 }
 
 async function renewRunLease(

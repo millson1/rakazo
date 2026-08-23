@@ -417,6 +417,8 @@ export const DeploymentSettingsSchema = z.object({
   hasDeploymentModelCredential: z.boolean(),
   defaultProvider: z.string().nullable(),
   defaultModel: z.string().nullable(),
+  summaryProvider: z.string().nullable(),
+  summaryModel: z.string().nullable(),
 });
 
 export const ServerUpdateSourceSchema = z.object({
@@ -509,6 +511,8 @@ export const MeSchema = z.object({
   needsModel: z.boolean(),
   defaultProvider: z.string().nullable(),
   defaultModel: z.string().nullable(),
+  summaryProvider: z.string().nullable(),
+  summaryModel: z.string().nullable(),
 });
 export type Me = z.infer<typeof MeSchema>;
 

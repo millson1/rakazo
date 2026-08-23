@@ -44,7 +44,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
   const [oauth, setOauth] = useState<OAuthNotice | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<
-    "connect" | "default" | "probe" | "key" | "refresh" | null
+    "connect" | "default" | "probe" | "key" | "refresh" | "summary" | null
   >(null);
   const [oauthPending, setOauthPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +127,13 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
   const currentEntry = catalog.find(
     (entry) => entry.provider === me?.defaultProvider && entry.id === me?.defaultModel,
   );
+  const summaryEntry = catalog.find(
+    (entry) => entry.provider === me?.summaryProvider && entry.id === me?.summaryModel,
+  );
+  const isSummary =
+    Boolean(selected) &&
+    me?.summaryProvider === selected?.provider &&
+    me?.summaryModel === selected?.id;
   const isCustom = Boolean(selected?.custom);
   const isCustomTemplate = selected?.provider === "openai-compatible";
   const isActive = me?.defaultProvider === selected?.provider && me?.defaultModel === selected?.id;
@@ -150,6 +157,22 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
     );
     setError(null);
     setNotice(null);
+  }
+
+  async function setSummaryModel() {
+    if (!selected) return;
+    setError(null);
+    setNotice(null);
+    setPending("summary");
+    try {
+      await rpc.models.setSummary({ provider: selected.provider, modelId: selected.id });
+      await refresh();
+      setNotice(`Status summaries will use ${selected.label}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change the summary model");
+    } finally {
+      setPending(null);
+    }
   }
 
   async function setModelDefault() {
@@ -397,6 +420,70 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
           <div className="mt-1 text-[13px] text-[#85858A]">
             {currentEntry?.providerName ?? me?.defaultProvider ?? "Configured by deployment"}
           </div>
+        </div>
+
+        <div className="mx-6 mt-3 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-3 sm:mx-8">
+          <div className="text-[12.5px] uppercase tracking-[0.08em] text-[#6C6C70]">
+            Status / summary model
+          </div>
+          <div className="mt-1 text-[16px] text-[#F1F1F2]">
+            {summaryEntry?.label ?? me?.summaryModel ?? "Platform cheap default"}
+          </div>
+          <div className="mt-1 text-[13px] text-[#85858A]">
+            Used for long-run status lines and history compaction — pick something cheap.
+          </div>
+          {modelsForProvider.length ? (
+            <div className="mt-3">
+              <ModelPicker
+                options={modelsForProvider}
+                value={
+                  me?.summaryProvider === provider && me.summaryModel
+                    ? me.summaryModel
+                    : (selected?.id ?? "")
+                }
+                onChange={(id) => {
+                  const entry = modelsForProvider.find((model) => model.id === id);
+                  if (!entry) return;
+                  void (async () => {
+                    setError(null);
+                    setNotice(null);
+                    setPending("summary");
+                    try {
+                      await rpc.models.setSummary({
+                        provider: entry.provider,
+                        modelId: entry.id,
+                      });
+                      await refresh();
+                      setNotice(`Status summaries will use ${entry.label}.`);
+                    } catch (err) {
+                      setError(
+                        err instanceof Error ? err.message : "Could not change the summary model",
+                      );
+                    } finally {
+                      setPending(null);
+                    }
+                  })();
+                }}
+              />
+            </div>
+          ) : null}
+          {selected ? (
+            <div className="mt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy || isSummary}
+                onClick={() => void setSummaryModel()}
+              >
+                {isSummary
+                  ? "Using this model for summaries"
+                  : pending === "summary"
+                    ? "Saving…"
+                    : "Use selected catalog model"}
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden px-6 py-6 sm:px-8 md:flex-row">
