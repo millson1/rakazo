@@ -1394,23 +1394,61 @@ describeJourneys("required product journeys", () => {
     });
     expect(alphaRun.task?.prompt).toContain("#general");
     expect(alphaRun.task?.prompt).toContain(channel.id);
+    expect(alphaRun.task?.prompt).toContain("You are in this room with");
+    expect(alphaRun.task?.prompt).toContain("Alpha");
+    expect(alphaRun.task?.prompt).toContain("Beta");
+    expect(alphaRun.task?.prompt).toContain("@Name");
+    expect(alphaRun.task?.prompt).toContain("post_to_channel");
 
     // A bot posts back through the same path the post_to_channel tool uses.
     const me = await rpc<Me>(app, cookie, "me");
     expect(
-      await postBotChannelMessage(prisma, {
-        workspaceId: me.workspaceId,
-        channelId: channel.id,
-        botId: alpha.id,
-        text: "On it.",
-      }),
+      await postBotChannelMessage(
+        { prisma, jobs },
+        {
+          workspaceId: me.workspaceId,
+          userId: me.userId,
+          channelId: channel.id,
+          botId: alpha.id,
+          text: "On it.",
+        },
+      ),
     ).toEqual({ ok: true, channelId: channel.id });
-    const reply = (
+    expect(await prisma.run.count({ where: { botId: beta.id, trigger: "channel" } })).toBe(0);
+    expect(
+      await postBotChannelMessage(
+        { prisma, jobs },
+        {
+          workspaceId: me.workspaceId,
+          userId: me.userId,
+          channelId: channel.id,
+          botId: alpha.id,
+          text: "@Beta can you review the invoice?",
+        },
+      ),
+    ).toEqual({ ok: true, channelId: channel.id });
+    await waitForDatabase(async () => {
+      const runs = await prisma.run.count({ where: { botId: beta.id, trigger: "channel" } });
+      return runs > 0;
+    });
+    const betaRun = await prisma.run.findFirstOrThrow({
+      where: { botId: beta.id, trigger: "channel" },
+      include: { task: { select: { prompt: true } } },
+    });
+    expect(betaRun.task?.prompt).toContain("You are in this room with");
+    expect(betaRun.task?.prompt).toContain("@Name");
+    expect(betaRun.task?.prompt).toContain("Alpha");
+    const replies = (
       await rpc<ChannelDetailDto>(app, cookie, "channels/get", {
         channelId: channel.id,
       })
-    ).messages.at(-1);
-    expect(reply).toMatchObject({ authorType: "bot", authorName: "Alpha", text: "On it." });
+    ).messages.filter((message) => message.authorType === "bot");
+    expect(replies.some((message) => message.text === "On it.")).toBe(true);
+    expect(replies.at(-1)).toMatchObject({
+      authorType: "bot",
+      authorName: "Alpha",
+      text: "@Beta can you review the invoice?",
+    });
 
     const talk = await rpc<ChannelDto>(app, cookie, "channels/create", {
       name: "talk",
@@ -1429,20 +1467,23 @@ describeJourneys("required product journeys", () => {
 
     // Non-members cannot post, and another workspace cannot see or touch the channel.
     expect(
-      await postBotChannelMessage(prisma, {
-        workspaceId: me.workspaceId,
-        channelId: channel.id,
-        botId: (
-          await rpc<Bot>(app, cookie, "bots/create", {
-            name: "Outsider",
-            title: "",
-            description: "",
-            instructions: "",
-            notifyOnFinish: true,
-          })
-        ).id,
-        text: "let me in",
-      }),
+      await postBotChannelMessage(
+        { prisma },
+        {
+          workspaceId: me.workspaceId,
+          channelId: channel.id,
+          botId: (
+            await rpc<Bot>(app, cookie, "bots/create", {
+              name: "Outsider",
+              title: "",
+              description: "",
+              instructions: "",
+              notifyOnFinish: true,
+            })
+          ).id,
+          text: "let me in",
+        },
+      ),
     ).toEqual({ error: "You are not a member of that channel." });
     expect(await rpc<ChannelDto[]>(app, intruder, "channels/list")).toEqual([]);
     for (const proc of ["channels/get", "channels/remove"]) {

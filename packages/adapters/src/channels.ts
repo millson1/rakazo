@@ -1,6 +1,6 @@
 import { type JobPublisher, runContinueJob } from "@rakazo/adapter-kit";
 import type { Actor, Channel, ChannelDetail, ChannelMessage } from "@rakazo/contracts";
-import { mentionNameAliases, mentionedBotIds } from "@rakazo/core";
+import { botDisplayName, mentionedBotIds, mentionNameAliases } from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 
 const HISTORY_LIMIT = 200;
@@ -10,6 +10,8 @@ export interface ChannelDeps {
   prisma: PrismaClient;
   jobs: JobPublisher;
 }
+
+type ChannelActor = Pick<Actor, "workspaceId" | "userId">;
 
 interface ChannelRow {
   id: string;
@@ -196,7 +198,8 @@ export async function removeChannel(
 
 /**
  * A user message wakes every workspace bot it names. Mentioning a bot that is not yet a
- * member adds it to the channel, then wakes it. Bot replies do not wake other bots.
+ * member adds it to the channel, then wakes it. Bot posts wake mentioned bots the same way,
+ * except the author.
  */
 export async function postUserChannelMessage(
   deps: ChannelDeps,
@@ -217,7 +220,52 @@ export async function postUserChannelMessage(
     where: { id: channel.id },
     data: { updatedAt: new Date() },
   });
+  await wakeMentionedChannelBots(deps, actor, channel, text);
+  return getChannel(deps.prisma, actor, channel.id);
+}
 
+export function formatChannelMemberRoster(
+  members: Array<{ name: string; title?: string | null }>,
+): string {
+  if (members.length === 0) return "no other members yet";
+  return members
+    .map((member) => {
+      const display = botDisplayName(member);
+      const title = member.title?.trim() ?? "";
+      if (title && title.toLowerCase() !== display.toLowerCase()) {
+        return `${display} (${title})`;
+      }
+      return display;
+    })
+    .join(", ");
+}
+
+export function channelWakePrompt(input: {
+  channelName: string;
+  channelId: string;
+  roster: string;
+  transcript: string;
+}): string {
+  return [
+    `You were mentioned in the #${input.channelName} channel.`,
+    `You are in this room with ${input.roster}. @Name pulls them in. Reply with post_to_channel using channel_id "${input.channelId}". Keep it short.`,
+    input.transcript ? `Recent channel messages:\n${input.transcript}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function channelIdFromWakePrompt(prompt: string): string | null {
+  return /channel_id "([^"]+)"/.exec(prompt)?.[1] ?? null;
+}
+
+async function wakeMentionedChannelBots(
+  deps: ChannelDeps,
+  actor: ChannelActor,
+  channel: { id: string; name: string; members: ChannelRow["members"] },
+  text: string,
+  exceptBotId?: string,
+): Promise<void> {
   const workspaceBots = await deps.prisma.bot.findMany({
     where: {
       workspaceId: actor.workspaceId,
@@ -235,6 +283,7 @@ export async function postUserChannelMessage(
     channel.members.flatMap((member) => (member.bot ? [member.bot.id] : [])),
   );
   for (const botId of mentionedBotIds(text, candidates)) {
+    if (botId === exceptBotId) continue;
     if (!memberIds.has(botId)) {
       await deps.prisma.channelMember.upsert({
         where: { channelId_botId: { channelId: channel.id, botId } },
@@ -249,12 +298,11 @@ export async function postUserChannelMessage(
       },
     );
   }
-  return getChannel(deps.prisma, actor, channel.id);
 }
 
 async function wakeChannelBot(
   deps: ChannelDeps,
-  actor: Actor,
+  actor: ChannelActor,
   channel: { id: string; name: string },
   botId: string,
 ): Promise<void> {
@@ -269,7 +317,7 @@ async function wakeChannelBot(
   });
   if (!bot?.thread) return;
 
-  const [recent, userName] = await Promise.all([
+  const [recent, userName, members] = await Promise.all([
     deps.prisma.channelMessage.findMany({
       where: { channelId: channel.id },
       include: messageInclude,
@@ -277,6 +325,11 @@ async function wakeChannelBot(
       take: CONTEXT_LIMIT,
     }),
     userDisplayName(deps.prisma, actor.userId),
+    deps.prisma.channelMember.findMany({
+      where: { channelId: channel.id },
+      include: { bot: { select: { name: true, title: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
   const transcript = recent
     .slice()
@@ -286,14 +339,15 @@ async function wakeChannelBot(
       return `${author}: ${message.text}`;
     })
     .join("\n");
-
-  const prompt = [
-    `You were mentioned in the #${channel.name} channel.`,
-    transcript ? `Recent channel messages:\n${transcript}` : "",
-    `Reply to the channel with post_to_channel using channel_id "${channel.id}". Keep it short. Only the members named in a message are woken, so answer for yourself.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const roster = formatChannelMemberRoster(
+    members.flatMap((member) => (member.bot ? [member.bot] : [])),
+  );
+  const prompt = channelWakePrompt({
+    channelName: channel.name,
+    channelId: channel.id,
+    roster,
+    transcript,
+  });
 
   const task = await deps.prisma.task.create({
     data: {
@@ -320,9 +374,10 @@ async function wakeChannelBot(
 }
 
 export async function postBotChannelMessage(
-  prisma: PrismaClient,
+  deps: { prisma: PrismaClient; jobs?: JobPublisher },
   input: {
     workspaceId: string;
+    userId?: string;
     channelId: string;
     botId: string;
     text: string;
@@ -331,16 +386,29 @@ export async function postBotChannelMessage(
 ): Promise<{ ok: true; channelId: string } | { error: string }> {
   const text = input.text.trim();
   if (!text) return { error: "Message text is required." };
-  const membership = await prisma.channelMember.findFirst({
+  const membership = await deps.prisma.channelMember.findFirst({
     where: {
       channelId: input.channelId,
       botId: input.botId,
       channel: { workspaceId: input.workspaceId },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      channel: {
+        select: {
+          id: true,
+          name: true,
+          userId: true,
+          members: {
+            include: { bot: { select: { id: true, name: true, title: true, color: true } } },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+    },
   });
   if (!membership) return { error: "You are not a member of that channel." };
-  await prisma.channelMessage.create({
+  await deps.prisma.channelMessage.create({
     data: {
       channelId: input.channelId,
       authorType: "bot",
@@ -349,9 +417,19 @@ export async function postBotChannelMessage(
       sourceRunId: input.sourceRunId,
     },
   });
-  await prisma.channel.update({
+  await deps.prisma.channel.update({
     where: { id: input.channelId },
     data: { updatedAt: new Date() },
   });
+  const userId = input.userId ?? membership.channel.userId;
+  if (deps.jobs && userId) {
+    await wakeMentionedChannelBots(
+      { prisma: deps.prisma, jobs: deps.jobs },
+      { workspaceId: input.workspaceId, userId },
+      membership.channel,
+      text,
+      input.botId,
+    );
+  }
   return { ok: true, channelId: input.channelId };
 }
