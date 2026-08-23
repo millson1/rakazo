@@ -1093,6 +1093,7 @@ function MobileBotMessageChip({
   text: string;
   onOpen: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   if (direction === "out") {
     return (
       <Pressable onPress={onOpen} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -1103,18 +1104,21 @@ function MobileBotMessageChip({
     );
   }
   return (
-    <View style={{ gap: 8, maxWidth: "90%" }}>
+    <View style={{ maxWidth: "90%" }}>
       <Pressable
-        onPress={onOpen}
+        onPress={() => setOpen((current) => !current)}
+        accessibilityState={{ expanded: open }}
         style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
       >
         <Text style={{ color: "#8E8EA0", fontSize: 13 }}>Message from</Text>
         <BotAvatar color={color} size={16} />
         <Text style={{ color: "#C9C9CE", fontSize: 13, fontWeight: "600" }}>{name}</Text>
       </Pressable>
-      <View style={{ backgroundColor: "#1A1A1D", padding: 12, borderRadius: 20 }}>
-        <Text style={{ color: "#DFDFE2", fontSize: 15, lineHeight: 22 }}>{text}</Text>
-      </View>
+      {open ? (
+        <View style={{ backgroundColor: "#1A1A1D", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, marginTop: 4 }}>
+          <Text style={{ color: "#DFDFE2", fontSize: 14, lineHeight: 20 }}>{text}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }

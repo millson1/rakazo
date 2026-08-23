@@ -25,6 +25,7 @@ import {
 import {
   abortableDelay,
   attachmentsForBot,
+  botDisplayName,
   createPendingUserMessageId,
   cronFromPreset,
   defaultCronPreset,
@@ -89,6 +90,7 @@ import { VersionNotice } from "../components/VersionNotice";
 import { decodeArtifactBase64, openArtifact } from "../lib/artifact-open";
 import { authClient } from "../lib/auth";
 import { takeInitialBootstrap } from "../lib/bootstrap";
+import { desktopBridge, windowChromeKind } from "../lib/desktop";
 import { dictation } from "../lib/dictation";
 import { revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
@@ -937,18 +939,21 @@ export function ShellPage() {
     takeControl,
     overlay,
     force = false,
+    botId,
   }: {
     takeControl: boolean;
     overlay: boolean;
     force?: boolean;
+    botId?: string;
   }) {
-    if (!active) return;
+    const id = botId ?? active?.id;
+    if (!id) return;
     const needsBoot = force || computer?.state !== "running" || !screenUrl;
     if (overlay && needsBoot) setBooting(true);
     try {
-      if (needsBoot) await rpc.computer.boot({ botId: active.id });
-      if (takeControl) await rpc.computer.takeover({ botId: active.id });
-      await refreshThread(active.id);
+      if (needsBoot) await rpc.computer.boot({ botId: id });
+      if (takeControl) await rpc.computer.takeover({ botId: id });
+      await refreshThread(id);
     } finally {
       setBooting(false);
     }
@@ -1048,6 +1053,19 @@ export function ShellPage() {
 
   const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
   const hasControl = userHoldsComputerControl(computer, active?.id);
+  const chromeKind = windowChromeKind(desktopBridge());
+
+  async function openBotComputer(botId: string) {
+    navigate(`/app/${botId}`);
+    setPanel("computer");
+    setComputerOpen(true);
+    await bootComputer({
+      takeControl: true,
+      overlay: true,
+      force: true,
+      botId,
+    });
+  }
 
   const userName = session.data?.user.name ?? "You";
   const initials = userName
@@ -1061,17 +1079,19 @@ export function ShellPage() {
     <div
       data-testid="shell-root"
       data-ready={shellReady}
-      className="relative flex h-full min-w-0 overflow-hidden bg-[#050506] text-[#DFDFE2]"
+      className="relative flex h-full min-w-0 flex-col overflow-hidden bg-[#050506] text-[#DFDFE2]"
     >
+      {chromeKind === "overlay" ? <div className="app-drag h-9 shrink-0" aria-hidden="true" /> : null}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <aside className="flex w-[316px] shrink-0 flex-col border-r border-[#171719] bg-[#0B0B0C]">
-        <div className="app-drag flex items-center justify-between px-[18px] pb-3 pt-4">
+        <div className="app-drag flex items-center justify-between px-[var(--rk-header-x)] pb-2 pt-3">
           <WindowChrome />
           <CreateMenu
             onNewBot={() => setPanel("create")}
             onNewChannel={() => setNewChannelOpen(true)}
           />
         </div>
-        <div className="mx-3.5 mb-3 flex items-center gap-2.5 rounded-xl border border-[#202023] bg-[#141416] px-3 py-2 text-[14px] text-[#6C6C70]">
+        <div className="mx-3.5 mb-2 flex items-center gap-2 rounded-[var(--rk-radius-row)] border border-[#202023] bg-[#141416] px-2.5 py-1.5 text-[13px] text-[#6C6C70]">
           <span>⌕</span>
           <input
             value={query}
@@ -1091,17 +1111,17 @@ export function ShellPage() {
                   key={channel.id}
                   type="button"
                   onClick={() => navigate(`/channel/${channel.id}`)}
-                  className="flex w-full gap-3 rounded-xl px-2.5 py-[11px] text-left"
+                  className="flex w-full items-center gap-[var(--rk-row-gap)] rounded-[var(--rk-radius-row)] px-[var(--rk-row-x)] py-[var(--rk-row-y)] text-left"
                   style={{
                     background: channelId === channel.id ? "#161618" : "transparent",
                   }}
                 >
-                  <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full bg-[#17171A] text-[#9A9AA0]">
+                  <span className="grid h-[var(--rk-avatar-list)] w-[var(--rk-avatar-list)] shrink-0 place-items-center rounded-[8px] bg-[#17171A] text-[#9A9AA0]">
                     <Hash size={17} strokeWidth={1.9} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-[15px] font-medium text-[#ECECEE]">
+                      <span className="truncate text-[14px] font-medium text-[#ECECEE]">
                         {channel.name}
                       </span>
                       <span className="shrink-0 text-[12.5px] text-[#6C6C70]">
@@ -1145,39 +1165,39 @@ export function ShellPage() {
                         position: { x: event.clientX, y: event.clientY },
                       });
                     }}
-                    className="flex w-full gap-3 rounded-xl px-2.5 py-[11px] text-left"
+                    className="flex w-full items-center gap-[var(--rk-row-gap)] rounded-[var(--rk-radius-row)] px-[var(--rk-row-x)] py-[var(--rk-row-y)] text-left"
                     style={{
                       background: !channelId && active?.id === bot.id ? "#161618" : "transparent",
                     }}
                   >
-                    <BotAvatar color={bot.color} size={38} />
+                    <BotAvatar color={bot.color} size={28} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
                         <span
-                          className={`truncate text-[15px] text-[#ECECEE] ${
+                          className={`truncate text-[14px] text-[#ECECEE] ${
                             bot.unread ? "font-semibold" : "font-medium"
                           }`}
                         >
-                          {bot.name}
+                          {botDisplayName(bot)}
                           {bot.unread ? <span className="sr-only"> (unread)</span> : null}
                         </span>
-                        <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-[#6C6C70]">
+                        <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-[#6C6C70]">
                           {formatInboxTime(bot.updatedAt)}
                           {bot.status === "waiting_input" || bot.status === "waiting_takeover" ? (
                             <span
                               aria-hidden="true"
-                              className="inline-block h-2 w-2 rounded-full bg-[#F5A03C]"
+                              className="inline-block h-1.5 w-1.5 rounded-full bg-[#F5A03C]"
                             />
                           ) : bot.unread ? (
                             <span
                               aria-hidden="true"
-                              className="inline-block h-2 w-2 rounded-full bg-[#8B5CF6]"
+                              className="inline-block h-1.5 w-1.5 rounded-full bg-[#8B5CF6]"
                             />
                           ) : null}
                         </span>
                       </div>
                       <div
-                        className={`mt-0.5 truncate text-[13.5px] ${
+                        className={`mt-px truncate text-[12.5px] ${
                           bot.status === "waiting_input" || bot.status === "waiting_takeover"
                             ? "font-medium text-[#F5A03C]"
                             : bot.unread
@@ -1190,6 +1210,12 @@ export function ShellPage() {
                           : bot.preview || bot.title}
                       </div>
                     </div>
+                    {bot.status === "waiting_takeover" || bot.status === "waiting_input" ? (
+                      <WaitingScreenThumb
+                        botId={bot.id}
+                        onOpen={() => void openBotComputer(bot.id)}
+                      />
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -1211,7 +1237,7 @@ export function ShellPage() {
                     <div key={bot.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
                       <BotAvatar color={bot.color} size={28} />
                       <span className="min-w-0 flex-1 truncate text-[14px] text-[#A8A8AD]">
-                        {bot.name}
+                        {botDisplayName(bot)}
                       </span>
                       <button
                         type="button"
@@ -1224,7 +1250,7 @@ export function ShellPage() {
                       </button>
                       <button
                         type="button"
-                        aria-label={`Delete ${bot.name}`}
+                        aria-label={`Delete ${botDisplayName(bot)}`}
                         onClick={() => setDeleteTarget(bot)}
                         className="text-[12.5px] text-[#FF5364]"
                       >
@@ -1255,7 +1281,7 @@ export function ShellPage() {
                         onClick={() => navigate(`/app/${bot.id}`)}
                         className="min-w-0 flex-1 truncate text-left text-[14px] text-[#A8A8AD] hover:text-white"
                       >
-                        {bot.name}
+                        {botDisplayName(bot)}
                       </button>
                       <button
                         type="button"
@@ -1386,17 +1412,17 @@ export function ShellPage() {
         />
       ) : (
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0D0D0E]">
-          <div className="flex items-center justify-between border-b border-[#141416] px-[22px] py-[17px]">
+          <div className="flex items-center justify-between border-b border-[#141416] px-[var(--rk-header-x)] py-[var(--rk-header-y)]">
             <button
               type="button"
               data-testid="bot-settings-trigger"
               onClick={() => setPanel("settings")}
-              className="flex min-w-0 items-center gap-3"
+              className="flex min-w-0 items-center gap-2"
             >
-              {active ? <BotAvatar color={active.color} size={26} thinking={botWorking} /> : null}
+              {active ? <BotAvatar color={active.color} size={22} thinking={botWorking} /> : null}
               <span className="min-w-0">
-                <span className="block truncate text-[16px] font-medium text-[#ECECEE]">
-                  {active?.name ?? "Select a bot"}
+                <span className="block truncate text-[15px] font-medium text-[#ECECEE]">
+                  {active ? botDisplayName(active) : "Select a bot"}
                 </span>
               </span>
             </button>
@@ -1433,6 +1459,8 @@ export function ShellPage() {
           <Transcript
             scrollRef={messageScroll}
             botId={active?.id ?? ""}
+            botColor={active?.color ?? "#6C6C70"}
+            screenUrl={screenUrl}
             messages={snapshot?.messages ?? []}
             olderCursor={snapshot?.olderCursor ?? null}
             loadingOlder={loadingOlder}
@@ -1459,6 +1487,7 @@ export function ShellPage() {
               if (!active) return;
               setChannelPeer({ botId: active.id, peerBotId });
             }}
+            onOpenComputer={() => void openComputer()}
           />
           {recordingSkill ? (
             <div className="px-6 pb-2 text-center text-[13px] text-[#E65707]">
@@ -1466,7 +1495,7 @@ export function ShellPage() {
             </div>
           ) : null}
           <Composer
-            activeName={active?.name}
+            activeName={active ? botDisplayName(active) : undefined}
             running={Boolean(snapshot?.run && isActive(snapshot.run.status))}
             disabled={Boolean(recordingSkill)}
             pendingAttachments={activePendingAttachments}
@@ -1510,7 +1539,7 @@ export function ShellPage() {
         }`}
       >
         {panel && active ? (
-          <div className="rk-scroll h-full w-[384px] overflow-y-auto px-5 py-[17px]">
+          <div className="rk-scroll h-full w-[384px] overflow-y-auto px-4 py-3">
             {panel !== "routine" && panel !== "create" ? (
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-[13.5px] text-[#85858A]">
@@ -1556,7 +1585,7 @@ export function ShellPage() {
                       {computerPlaceholder(
                         computer?.state,
                         booting,
-                        computerLabel(computer?.mode, active.name),
+                        computerLabel(computer?.mode, botDisplayName(active)),
                       )}
                     </div>
                   )}
@@ -1575,7 +1604,7 @@ export function ShellPage() {
                         ? "You have control"
                         : computer?.state === "suspended"
                           ? "Asleep"
-                          : computerLabel(computer?.mode, active.name)}
+                          : computerLabel(computer?.mode, botDisplayName(active))}
                   </span>
                   {hasControl ? (
                     <Button
@@ -1988,7 +2017,7 @@ export function ShellPage() {
         {callOpen && active ? (
           <CallView
             botId={active.id}
-            botName={active.name}
+            botName={botDisplayName(active)}
             transcribe={Boolean(voiceStatus?.transcribe)}
             snapshot={snapshot}
             onSend={sendMessage}
@@ -1999,10 +2028,12 @@ export function ShellPage() {
         ) : null}
       </Suspense>
 
+      </div>
+
       {booting ? (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-[22px] bg-[rgba(4,4,5,.96)]">
           <div className="text-[19px] font-medium text-[#F1F1F2]">
-            Booting up {active?.name}’s computer
+            Booting up {active ? botDisplayName(active) : "this"}’s computer
           </div>
           <div className="h-[5px] w-[min(420px,70%)] overflow-hidden rounded-full bg-[#232327]">
             <div className="h-full w-2/3 rounded-full bg-[#F1F1EF]" />
@@ -2022,7 +2053,7 @@ export function ShellPage() {
                 />
               ) : (
                 <span className="truncate text-[15.5px] font-medium text-[#ECECEE]">
-                  {computerLabel(computer?.mode, active.name)}
+                  {computerLabel(computer?.mode, botDisplayName(active))}
                 </span>
               )}
               {!recordingSkill && hasControl ? (
@@ -2095,7 +2126,7 @@ export function ShellPage() {
               <div className="grid h-full place-items-center text-sm text-[#6C6C70]">
                 {computer?.state === "suspended"
                   ? "Computer is asleep"
-                  : computerLabel(computer?.mode, active.name)}
+                  : computerLabel(computer?.mode, botDisplayName(active))}
               </div>
             )}
           </div>
@@ -2207,6 +2238,8 @@ function scrollTranscriptToEnd(element: HTMLElement): void {
 const Transcript = memo(function Transcript({
   scrollRef,
   botId,
+  botColor,
+  screenUrl,
   messages,
   olderCursor,
   loadingOlder,
@@ -2222,9 +2255,12 @@ const Transcript = memo(function Transcript({
   speakingMessageId,
   onSpeak,
   onOpenChannel,
+  onOpenComputer,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   botId: string;
+  botColor: string;
+  screenUrl: string | null;
   messages: ThreadMessage[];
   olderCursor: number | null;
   loadingOlder: boolean;
@@ -2240,6 +2276,7 @@ const Transcript = memo(function Transcript({
   speakingMessageId: string | null;
   onSpeak: (message: ThreadMessage) => void;
   onOpenChannel: (peerBotId: string) => void;
+  onOpenComputer: () => void;
 }) {
   const enterState = useRef({ botId: "", seen: new Set<string>(), primed: false });
   const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
@@ -2308,9 +2345,9 @@ const Transcript = memo(function Transcript({
       <div
         ref={scrollRef}
         data-testid="transcript"
-        className="rk-transcript rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6"
+        className="rk-transcript rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-[var(--rk-gutter)] py-3 sm:px-4"
       >
-        <div ref={contentRef} className="mx-auto flex w-full max-w-[720px] flex-col gap-4">
+        <div ref={contentRef} className="mx-auto flex w-full max-w-[720px] flex-col gap-2.5">
           {olderCursor != null ? (
             <button
               type="button"
@@ -2332,6 +2369,8 @@ const Transcript = memo(function Transcript({
               >
                 <MessageView
                   botId={botId}
+                  botColor={botColor}
+                  screenUrl={screenUrl}
                   message={message}
                   canAnswer={message.id === answerableAskMessageId}
                   onOpenBot={onOpenBot}
@@ -2342,11 +2381,12 @@ const Transcript = memo(function Transcript({
                   speaking={speakingMessageId === message.id}
                   onSpeak={() => onSpeak(message)}
                   onOpenChannel={onOpenChannel}
+                  onOpenComputer={onOpenComputer}
                 />
               </div>
             </div>
           ))}
-          {running && !hasLiveReasoning ? <BotWorkingStatus /> : null}
+          {running && !hasLiveReasoning ? <BotWorkingStatus color={botColor} /> : null}
         </div>
       </div>
       {showJump ? (
@@ -2416,7 +2456,7 @@ const Composer = memo(function Composer({
   }
 
   return (
-    <div className="px-4 pb-6 pt-3 sm:px-6">
+    <div className="px-[var(--rk-gutter)] pb-3 pt-2 sm:px-4">
       <div className="mx-auto w-full max-w-[720px]">
         {sendError || dictationError ? (
           <div className="mb-3 rounded-[14px] border border-[#5A2A2A] bg-[#2A1717] px-4 py-2 text-[13px] text-[#F1A8A8]">
@@ -2457,7 +2497,7 @@ const Composer = memo(function Composer({
             ))}
           </div>
         ) : null}
-        <div className="flex items-center gap-2 rounded-full border border-[#202023] bg-[#131315] py-[9px] pr-2 pl-2.5">
+        <div className="flex items-center gap-1.5 rounded-full border border-[#202023] bg-[#131315] py-[var(--rk-composer-y)] pr-1.5 pl-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -2471,7 +2511,7 @@ const Composer = memo(function Composer({
             aria-label="Attach file"
             disabled={disabled}
             onClick={() => fileInputRef.current?.click()}
-            className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full text-[#9A9AA0] hover:bg-[#1B1B1E] disabled:opacity-40"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#9A9AA0] hover:bg-[#1B1B1E] disabled:opacity-40"
           >
             <Plus size={18} strokeWidth={1.8} />
           </button>
@@ -2486,14 +2526,14 @@ const Composer = memo(function Composer({
             }}
             disabled={disabled}
             placeholder={activeName ? `Message ${activeName}` : "Message…"}
-            className="flex-1 bg-transparent text-[15.5px] text-[#E9E9EA] outline-none disabled:opacity-40"
+            className="flex-1 bg-transparent text-[14.5px] text-[#E9E9EA] outline-none disabled:opacity-40"
           />
           {running ? (
             <button
               type="button"
               aria-label="Stop"
               onClick={() => void onStop()}
-              className="grid h-9 w-9 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A]"
+              className="grid h-7 w-7 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A]"
             >
               <Square size={12} strokeWidth={0} fill="currentColor" />
             </button>
@@ -2503,7 +2543,7 @@ const Composer = memo(function Composer({
               aria-label="Send"
               disabled={sending || disabled}
               onClick={send}
-              className="grid h-9 w-9 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] disabled:opacity-50"
+              className="grid h-7 w-7 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] disabled:opacity-50"
             >
               <ArrowUp size={18} strokeWidth={2} />
             </button>
@@ -2524,7 +2564,7 @@ const Composer = memo(function Composer({
                 onDictateStart((text) => setDraft((current) => `${current} ${text}`.trim()));
               }}
               onTouchEnd={onDictateStop}
-              className={`grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full ${
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${
                 dictating ? "bg-[rgba(48,162,75,.16)] text-[#4ECB71]" : "text-[#9A9AA0]"
               }`}
               title={transcribe ? "Hold to talk" : "Hold to talk (on-device dictation)"}
@@ -2565,6 +2605,8 @@ function latestAnswerableAskMessageId(snapshot: ThreadSnapshot | null): string |
 
 const MessageView = memo(function MessageView({
   botId,
+  botColor,
+  screenUrl,
   canAnswer,
   message,
   onAnswer,
@@ -2575,8 +2617,11 @@ const MessageView = memo(function MessageView({
   speaking,
   onSpeak,
   onOpenChannel,
+  onOpenComputer,
 }: {
   botId: string;
+  botColor: string;
+  screenUrl: string | null;
   canAnswer: boolean;
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
@@ -2587,6 +2632,7 @@ const MessageView = memo(function MessageView({
   speaking: boolean;
   onSpeak: () => void;
   onOpenChannel: (peerBotId: string) => void;
+  onOpenComputer: () => void;
 }) {
   return (
     <>
@@ -2601,14 +2647,14 @@ const MessageView = memo(function MessageView({
         if (block.kind === "progress") {
           return (
             <div key={i} className="flex justify-start">
-              <div className="max-w-[74%] rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5] text-[#DFDFE2]">
+              <div className="max-w-[74%] rounded-[var(--rk-radius-bubble)] bg-[#1A1A1D] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#DFDFE2]">
                 <ChatMarkdown streaming>{block.text}</ChatMarkdown>
               </div>
             </div>
           );
         }
         if (block.kind === "reasoning") {
-          return <ReasoningTrace key={i} steps={block.steps} />;
+          return <ReasoningTrace key={i} steps={block.steps} color={botColor} />;
         }
         if (block.kind === "subagent") {
           const running = block.status === "running";
@@ -2721,7 +2767,7 @@ const MessageView = memo(function MessageView({
         if (block.kind === "text" && message.role === "user") {
           return (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[70%] rounded-[18px] bg-[#2F2F33] px-[16px] py-[10px] text-[15.5px] leading-[1.5] text-[#ECECEE]">
+              <div className="max-w-[70%] rounded-[var(--rk-radius-bubble)] bg-[#2F2F33] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#ECECEE]">
                 {block.text}
               </div>
             </div>
@@ -2730,7 +2776,7 @@ const MessageView = memo(function MessageView({
         if (block.kind === "text") {
           return (
             <div key={i} className="flex justify-start">
-              <div className="max-w-[80%] rounded-[18px] bg-[#1A1A1D] px-[16px] py-[10px] text-[15.5px] leading-[1.55] text-[#DFDFE2]">
+              <div className="max-w-[80%] rounded-[var(--rk-radius-bubble)] bg-[#1A1A1D] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.5] text-[#DFDFE2]">
                 <ChatMarkdown>{block.text}</ChatMarkdown>
                 {voiceReady ? (
                   <button
@@ -2799,16 +2845,19 @@ const MessageView = memo(function MessageView({
           return (
             <div
               key={i}
-              className="w-[340px] rounded-[18px] border border-[#232326] bg-[#17171A] px-[18px] py-4"
+              className="flex w-[min(420px,100%)] items-start gap-2 rounded-[var(--rk-radius-row)] border border-[#232326] bg-[#17171A] px-2.5 py-2"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-[#ECECEE]">Computer</span>
-                <span className="rounded-full bg-[rgba(48,162,75,.14)] px-[11px] py-1 text-[13px] text-[#4ECB71]">
-                  {block.state}
-                </span>
-              </div>
-              <div className="my-2.5 text-[14.5px] leading-[1.5] text-[#A8A8AD]">
-                <ChatMarkdown>{block.text}</ChatMarkdown>
+              <ComputerScreenThumb url={screenUrl} label="Open computer" onOpen={onOpenComputer} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium text-[#ECECEE]">Computer</span>
+                  <span className="rounded-full bg-[rgba(48,162,75,.14)] px-1.5 py-px text-[11px] text-[#4ECB71]">
+                    {block.state}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[12.5px] leading-[1.4] text-[#A8A8AD]">
+                  <ChatMarkdown>{block.text}</ChatMarkdown>
+                </div>
               </div>
             </div>
           );
@@ -3003,16 +3052,16 @@ function ComputerModePicker({
   onChange: (value: ComputerMode) => void;
 }) {
   return (
-    <div className="mt-4">
-      <div className="text-[14px] text-[#85858A]">Computer</div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+    <div className="mt-3">
+      <div className="text-[13px] text-[#85858A]">Computer</div>
+      <div className="mt-1 grid grid-cols-2 gap-1.5">
         {(["team", "dedicated"] as const).map((mode) => (
           <button
             key={mode}
             type="button"
             aria-pressed={value === mode}
             onClick={() => onChange(mode)}
-            className={`rounded-[11px] border px-3.5 py-3 text-[14px] capitalize ${
+            className={`rounded-[8px] border px-2.5 py-2 text-[13px] capitalize ${
               value === mode
                 ? "border-[#6C6C70] bg-[#1A1A1D] text-[#ECECEE]"
                 : "border-[#26262A] text-[#85858A]"
@@ -3056,22 +3105,22 @@ function CreateBotForm({
           <X size={16} strokeWidth={1.8} />
         </button>
       </div>
-      <label className="mt-6 block text-[14px] text-[#85858A]">
+      <label className="mt-4 block text-[13px] text-[#85858A]">
         Name
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Name this bot"
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
         />
       </label>
-      <label className="mt-4 block text-[14px] text-[#85858A]">
+      <label className="mt-3 block text-[13px] text-[#85858A]">
         Title
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Describe what this bot does"
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
         />
       </label>
       <label className="mt-4 block text-[14px] text-[#85858A]">
@@ -3158,6 +3207,7 @@ function BotMessageChip({
   block: Extract<ThreadMessage["blocks"][number], { kind: "bot_message" }>;
   onOpen: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   if (block.direction === "out") {
     return (
       <button
@@ -3172,50 +3222,58 @@ function BotMessageChip({
     );
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col">
       <button
         type="button"
-        onClick={onOpen}
-        className="flex items-center justify-center gap-1.5 py-1 text-[13px] text-[#8E8EA0] hover:text-[#C9C9CE]"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex items-center justify-center gap-1.5 py-0.5 text-[12.5px] text-[#8E8EA0] hover:text-[#C9C9CE]"
       >
         <span>Message from</span>
-        <BotAvatar color={block.peerColor} size={18} />
+        <BotAvatar color={block.peerColor} size={16} />
         <span className="font-medium text-[#C9C9CE]">{block.peerName}</span>
       </button>
-      <div className="flex justify-start">
-        <div className="max-w-[74%] rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5] text-[#DFDFE2]">
-          {block.text}
+      {open ? (
+        <div className="flex justify-start">
+          <div className="max-w-[74%] rounded-[var(--rk-radius-bubble)] bg-[#1A1A1D] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14px] leading-[1.45] text-[#DFDFE2]">
+            {block.text}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
 
-function BotWorkingStatus() {
+function BotWorkingStatus({ color }: { color: string }) {
   return (
     <div className="rk-thought flex items-center gap-1.5 py-0.5" data-testid="bot-working">
-      <ChevronRight size={16} strokeWidth={2} className="rk-thought-caret text-[#8E8EA0]" />
-      <span className="rk-working-text text-[15px] font-medium">Thinking</span>
+      <BotAvatar color={color} size={18} thinking />
+      <ChevronRight size={14} strokeWidth={2} className="rk-thought-caret text-[#8E8EA0]" />
+      <span className="rk-thought-label rk-working-text text-[13px] font-medium">Thinking</span>
     </div>
   );
 }
 
-function ReasoningTrace({ steps }: { steps: ReasoningStep[] }) {
+function ReasoningTrace({ steps, color }: { steps: ReasoningStep[]; color: string }) {
   const running = steps.some((step) => step.status === "running");
   const visible = visibleReasoningSteps(steps);
   if (!steps.length) return null;
   return (
     <details className="rk-thought w-[min(560px,100%)]">
-      <summary className="rk-thought-summary flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+      <summary
+        aria-label={running ? "Thinking" : "Thought"}
+        className="rk-thought-summary flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"
+      >
+        <BotAvatar color={color} size={18} thinking={running} />
         <ChevronRight
-          size={16}
+          size={14}
           strokeWidth={2}
           className="rk-thought-caret shrink-0 text-[#8E8EA0]"
         />
         {running ? (
-          <span className="rk-working-text text-[15px] font-medium">Thinking</span>
+          <span className="rk-thought-label rk-working-text text-[13px] font-medium">Thinking</span>
         ) : (
-          <span className="text-[15px] font-medium text-[#B4B4B8]">Thought</span>
+          <span className="rk-thought-label text-[13px] font-medium text-[#B4B4B8]">Thought</span>
         )}
       </summary>
       {visible.length ? (
@@ -3264,7 +3322,7 @@ function BotSettings({
   onExport: () => Promise<void>;
   onClear: () => void;
 }) {
-  const [name, setName] = useState(bot.name);
+  const [name, setName] = useState(botDisplayName(bot));
   const [title, setTitle] = useState(bot.title);
   const [description, setDescription] = useState(bot.description);
   const [computerMode, setComputerMode] = useState(bot.computerMode);
@@ -3312,34 +3370,34 @@ function BotSettings({
   return (
     <div data-testid="bot-settings">
       <div className="flex justify-center">
-        <BotAvatar color={bot.color} size={64} />
+        <BotAvatar color={bot.color} size={48} />
       </div>
-      <label className="mt-6 block text-[14px] text-[#85858A]">
+      <label className="mt-4 block text-[13px] text-[#85858A]">
         Name
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
         />
       </label>
-      <label className="mt-4 block text-[14px] text-[#85858A]">
+      <label className="mt-3 block text-[13px] text-[#85858A]">
         Title
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
         />
       </label>
-      <label className="mt-4 block text-[14px] text-[#85858A]">
+      <label className="mt-3 block text-[13px] text-[#85858A]">
         Description
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          rows={4}
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          rows={3}
+          className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
         />
       </label>
-      <label className="mt-4 block text-[14px] text-[#85858A]">
+      <label className="mt-3 block text-[13px] text-[#85858A]">
         Inference
         <select
           value={modelProvider}
@@ -3350,7 +3408,7 @@ function BotSettings({
               catalog.find((entry) => entry.provider === nextProvider)?.id ?? bot.modelId ?? "",
             );
           }}
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
         >
           <option value="">Workspace default</option>
           {connectedProviders.map((group) => (
@@ -3361,12 +3419,12 @@ function BotSettings({
         </select>
       </label>
       {modelProvider ? (
-        <label className="mt-4 block text-[14px] text-[#85858A]">
+        <label className="mt-3 block text-[13px] text-[#85858A]">
           Model
           <select
             value={modelId}
             onChange={(event) => setModelId(event.target.value)}
-            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+            className="mt-1 w-full rounded-[8px] border border-[#26262A] bg-transparent px-2.5 py-[var(--rk-field-y)] text-[#ECECEE]"
           >
             {modelsForProvider.length ? (
               modelsForProvider.map((entry) => (
@@ -3818,6 +3876,54 @@ function screenIframeSandbox(url: string | null) {
   } catch {
     return undefined;
   }
+}
+
+function ComputerScreenThumb({
+  url,
+  label,
+  onOpen,
+}: {
+  url: string | null;
+  label: string;
+  onOpen: () => void;
+}) {
+  const embedded = embeddableScreenUrl(url);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      className="rk-screen-thumb app-no-drag"
+    >
+      {embedded ? (
+        <iframe title="" src={embedded} sandbox={screenIframeSandbox(embedded)} tabIndex={-1} />
+      ) : (
+        <span className="grid h-full w-full place-items-center text-[#5C5C62]">
+          <Monitor size={14} strokeWidth={1.7} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function WaitingScreenThumb({ botId, onOpen }: { botId: string; onOpen: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void rpc.computer
+      .screenUrl({ botId })
+      .then((result) => {
+        if (!cancelled) setUrl(result.url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [botId]);
+  return <ComputerScreenThumb url={url} label="Open computer" onOpen={onOpen} />;
 }
 
 function computerPlaceholder(

@@ -1,4 +1,5 @@
 import type { Bot, BotSection } from "@rakazo/contracts";
+import { botDisplayName } from "@rakazo/core";
 import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 
 export type ContextMenuPosition = { x: number; y: number };
@@ -74,7 +75,7 @@ export function BotContextMenu({
       />
       <div
         role="menu"
-        aria-label={`Actions for ${bot.name}`}
+        aria-label={`Actions for ${botDisplayName(bot)}`}
         className="fixed w-[264px] rounded-[18px] border border-[#343438] bg-[#1A1A1D] p-2 shadow-[0_24px_60px_rgba(0,0,0,.62)]"
         style={{ left: safeLeft, top: safeTop }}
       >
@@ -117,7 +118,7 @@ export function BotContextMenu({
       {sectionMenuOpen ? (
         <div
           role="menu"
-          aria-label={`Move ${bot.name} to section`}
+          aria-label={`Move ${botDisplayName(bot)} to section`}
           className="fixed max-h-[min(420px,calc(100vh-16px))] w-[264px] overflow-y-auto rounded-[18px] border border-[#343438] bg-[#1A1A1D] p-2 shadow-[0_24px_60px_rgba(0,0,0,.62)]"
           style={{ left: Math.max(margin, sectionLeft), top: safeTop }}
         >

@@ -190,8 +190,44 @@ body,
   animation: rkWorkingShimmer 1.05s linear infinite;
 }
 
-.rk-thought-summary {
-  outline: none;
+.rk-thought-label {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition:
+    opacity 0.12s ease,
+    max-width 0.12s ease;
+}
+
+.rk-thought:hover .rk-thought-label,
+.rk-thought:focus-within .rk-thought-label,
+.rk-thought-summary:hover .rk-thought-label,
+.rk-thought-summary:focus-visible .rk-thought-label,
+.rk-thought[open] .rk-thought-label {
+  max-width: 8rem;
+  opacity: 1;
+}
+
+.rk-screen-thumb {
+  position: relative;
+  flex: none;
+  width: 58px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #101012;
+  box-shadow: inset 0 0 0 1px #2a2a2f;
+}
+
+.rk-screen-thumb iframe {
+  pointer-events: none;
+  border: 0;
+  background: #000;
+  width: 322px;
+  height: 200px;
+  transform: scale(0.18);
+  transform-origin: top left;
 }
 
 .rk-thought-caret {

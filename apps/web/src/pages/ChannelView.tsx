@@ -1,5 +1,13 @@
 import type { Bot, ChannelDetail } from "@rakazo/contracts";
-import { formatChatTimestamp, mentionedBotIds, shouldShowChatTimestamp } from "@rakazo/core";
+import {
+  botDisplayName,
+  filterMentionableBots,
+  formatChatTimestamp,
+  mentionNameAliases,
+  mentionQueryAt,
+  mentionedBotIds,
+  shouldShowChatTimestamp,
+} from "@rakazo/core";
 import { BotAvatar } from "@rakazo/ui-web";
 import { ArrowUp, Check, Hash, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +38,9 @@ export function ChannelView({
   const [detail, setDetail] = useState<ChannelDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
   const [posting, setPosting] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [savingMembers, setSavingMembers] = useState(false);
@@ -105,11 +116,37 @@ export function ChannelView({
     [detail?.members],
   );
   const mentionCandidates = useMemo(
-    () => (detail?.members ?? []).map((member) => ({ botId: member.botId, name: member.name })),
-    [detail?.members],
+    () =>
+      bots.map((bot) => ({
+        botId: bot.id,
+        name: bot.name,
+        aliases: mentionNameAliases(bot.name, bot.title),
+      })),
+    [bots],
+  );
+  const mention = mentionQueryAt(draft, cursor);
+  const mentionMatches = useMemo(
+    () => (mention ? filterMentionableBots(bots, mention.query) : []),
+    [bots, mention],
   );
   const unaddressed =
     draft.trim().length > 0 && mentionedBotIds(draft, mentionCandidates).length === 0;
+
+  useEffect(() => {
+    setMentionIndex(0);
+    setMentionDismissed(false);
+  }, [mention?.query, mentionMatches.length]);
+
+  function insertMention(bot: Bot) {
+    if (!mention) return;
+    const label = botDisplayName(bot);
+    const before = draft.slice(0, mention.start);
+    const after = draft.slice(cursor).replace(/^\s*/, "");
+    const next = `${before}@${label} ${after}`;
+    const nextCursor = before.length + label.length + 2;
+    setDraft(next);
+    setCursor(nextCursor);
+  }
 
   async function post() {
     const text = draft.trim();
@@ -170,7 +207,7 @@ export function ChannelView({
       data-channel-id={channelId}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0D0D0E]"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-[#141416] px-[22px] py-[17px]">
+      <div className="flex items-start justify-between gap-3 border-b border-[#141416] px-[var(--rk-header-x)] py-[var(--rk-header-y)]">
         <div className="min-w-0">
           {editingName ? (
             <input
@@ -209,22 +246,25 @@ export function ChannelView({
               }}
               className="flex min-w-0 items-center gap-1.5"
             >
-              <Hash size={16} strokeWidth={2} className="shrink-0 text-[#6C6C70]" />
-              <span className="truncate text-[16px] font-medium text-[#ECECEE]">
+              <Hash size={14} strokeWidth={2} className="shrink-0 text-[#6C6C70]" />
+              <span className="truncate text-[15px] font-medium text-[#ECECEE]">
                 {detail?.name ?? "Channel"}
               </span>
             </button>
           )}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]">
             {detail?.members.length ? (
-              detail.members.map((member) => (
-                <span key={member.botId} className="flex items-center gap-1.5">
-                  <BotAvatar color={member.color} size={16} />
+              detail.members.map((member) => {
+                const bot = bots.find((entry) => entry.id === member.botId);
+                return (
+                <span key={member.botId} className="flex items-center gap-1">
+                  <BotAvatar color={member.color} size={12} />
                   <span className="truncate" style={{ color: member.color }}>
-                    {member.name}
+                    {bot ? botDisplayName(bot) : member.name}
                   </span>
                 </span>
-              ))
+                );
+              })
             ) : (
               <span className="text-[#6C6C70]">
                 {detail ? "No bots in this channel yet" : "Opening channel…"}
@@ -282,8 +322,8 @@ export function ChannelView({
                     }
                     className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 text-left text-[15px] text-[#ECECEE] outline-none hover:bg-[#29292D] focus-visible:bg-[#29292D] disabled:opacity-50"
                   >
-                    <BotAvatar color={bot.color} size={22} />
-                    <span className="min-w-0 flex-1 truncate">{bot.name}</span>
+                    <BotAvatar color={bot.color} size={20} />
+                    <span className="min-w-0 flex-1 truncate">{botDisplayName(bot)}</span>
                     {joined ? (
                       <Check size={16} strokeWidth={2} className="shrink-0 text-[#4ECB71]" />
                     ) : null}
@@ -297,9 +337,9 @@ export function ChannelView({
       <div
         ref={scrollRef}
         data-testid="channel-transcript"
-        className="rk-transcript rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6"
+        className="rk-transcript rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-[var(--rk-gutter)] py-3 sm:px-4"
       >
-        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-2.5">
           {!detail && error ? (
             <p className="py-16 text-center text-[14px] text-[#85858A]">{error}</p>
           ) : null}
@@ -317,21 +357,21 @@ export function ChannelView({
               ) : null}
               {message.authorType === "user" ? (
                 <div className="flex justify-end">
-                  <div className="max-w-[70%] whitespace-pre-wrap rounded-[18px] bg-[#2F2F33] px-[16px] py-[10px] text-[15.5px] leading-[1.5] text-[#ECECEE]">
+                  <div className="max-w-[70%] whitespace-pre-wrap rounded-[var(--rk-radius-bubble)] bg-[#2F2F33] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#ECECEE]">
                     {message.text}
                   </div>
                 </div>
               ) : (
-                <div className="flex items-start gap-2.5">
-                  <BotAvatar color={message.authorColor ?? FALLBACK_BOT_COLOR} size={28} />
+                <div className="flex items-start gap-2">
+                  <BotAvatar color={message.authorColor ?? FALLBACK_BOT_COLOR} size={22} />
                   <div className="min-w-0 max-w-[min(560px,82%)]">
                     <div
-                      className="mb-1 text-[13px] font-medium"
+                      className="mb-0.5 text-[12px] font-medium"
                       style={{ color: message.authorColor ?? FALLBACK_BOT_COLOR }}
                     >
                       {message.authorName}
                     </div>
-                    <div className="whitespace-pre-wrap rounded-[18px] bg-[#1A1A1D] px-[16px] py-[10px] text-[15.5px] leading-[1.55] text-[#DFDFE2]">
+                    <div className="whitespace-pre-wrap rounded-[var(--rk-radius-bubble)] bg-[#1A1A1D] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.5] text-[#DFDFE2]">
                       {message.text}
                     </div>
                   </div>
@@ -341,19 +381,76 @@ export function ChannelView({
           ))}
         </div>
       </div>
-      <div className="px-4 pb-6 pt-3 sm:px-6">
-        <div className="mx-auto w-full max-w-[720px]">
+      <div className="px-[var(--rk-gutter)] pb-3 pt-2 sm:px-4">
+        <div className="relative mx-auto w-full max-w-[720px]">
           {detail && error ? (
-            <div className="mb-3 rounded-[14px] border border-[#5A2A2A] bg-[#2A1717] px-4 py-2 text-[13px] text-[#F1A8A8]">
+            <div className="mb-2 rounded-[10px] border border-[#5A2A2A] bg-[#2A1717] px-3 py-1.5 text-[12.5px] text-[#F1A8A8]">
               {error}
             </div>
           ) : null}
-          <div className="flex items-center gap-2 rounded-full border border-[#202023] bg-[#131315] py-[9px] pl-4 pr-2">
+          {mention && !mentionDismissed && mentionMatches.length > 0 ? (
+            <div
+              role="listbox"
+              aria-label="Mention a bot"
+              className="rk-scroll absolute bottom-full left-0 right-12 z-20 mb-1 max-h-[220px] overflow-y-auto rounded-[10px] border border-[#343438] bg-[#1A1A1D] p-1 shadow-[0_16px_40px_rgba(0,0,0,.55)]"
+            >
+              {mentionMatches.map((bot, index) => (
+                <button
+                  key={bot.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === mentionIndex}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    insertMention(bot);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[13.5px] text-[#ECECEE]"
+                  style={{ background: index === mentionIndex ? "#29292D" : "transparent" }}
+                >
+                  <BotAvatar color={bot.color} size={18} />
+                  <span className="min-w-0 flex-1 truncate">{botDisplayName(bot)}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex items-center gap-1.5 rounded-full border border-[#202023] bg-[#131315] py-[var(--rk-composer-y)] pl-3.5 pr-1.5">
             <input
               value={draft}
               disabled={!detail}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setCursor(event.target.selectionStart ?? event.target.value.length);
+              }}
+              onClick={(event) => setCursor(event.currentTarget.selectionStart ?? draft.length)}
+              onKeyUp={(event) => setCursor(event.currentTarget.selectionStart ?? draft.length)}
               onKeyDown={(event) => {
+                if (mention && !mentionDismissed && mentionMatches.length > 0) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setMentionIndex((index) => (index + 1) % mentionMatches.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setMentionIndex(
+                      (index) => (index - 1 + mentionMatches.length) % mentionMatches.length,
+                    );
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === "Tab") {
+                    const selected = mentionMatches[mentionIndex];
+                    if (selected) {
+                      event.preventDefault();
+                      insertMention(selected);
+                      return;
+                    }
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setMentionDismissed(true);
+                    return;
+                  }
+                }
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void post();
@@ -364,19 +461,19 @@ export function ChannelView({
                   ? `Message #${detail.name} — @mention a bot to bring it in`
                   : "Opening channel…"
               }
-              className="flex-1 bg-transparent text-[15.5px] text-[#E9E9EA] outline-none disabled:opacity-40"
+              className="flex-1 bg-transparent text-[14.5px] text-[#E9E9EA] outline-none disabled:opacity-40"
             />
             <button
               type="button"
               aria-label="Send"
               disabled={!detail || posting || draft.trim().length === 0}
               onClick={() => void post()}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] disabled:opacity-40"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] disabled:opacity-40"
             >
-              <ArrowUp size={18} strokeWidth={2} />
+              <ArrowUp size={16} strokeWidth={2} />
             </button>
           </div>
-          <p className="mt-2 h-4 px-4 text-[12.5px] text-[#6C6C70]">
+          <p className="mt-1.5 h-4 px-3 text-[12px] text-[#6C6C70]">
             {unaddressed ? "No bot mentioned — nobody will reply to this message." : null}
           </p>
         </div>

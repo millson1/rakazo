@@ -1,4 +1,5 @@
 import type { Bot } from "@rakazo/contracts";
+import { botDisplayName } from "@rakazo/core";
 import { BotAvatar } from "@rakazo/ui-web";
 import { useEffect, useRef, useState } from "react";
 
@@ -99,7 +100,7 @@ export function NewChannelDialog({
                   />
                   <BotAvatar color={bot.color} size={24} />
                   <span className="min-w-0 flex-1 truncate text-[14px] text-[#ECECEE]">
-                    {bot.name}
+                    {botDisplayName(bot)}
                   </span>
                 </label>
               ))}
