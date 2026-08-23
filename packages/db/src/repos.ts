@@ -10,6 +10,24 @@ import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./co
 import { createThreadMessageInTransaction } from "./messages.js";
 import { IsolationError } from "./scope.js";
 
+function inboxPreview(
+  blocks: Array<{
+    kind?: string;
+    text?: string;
+    direction?: string;
+    peerName?: string;
+  }>,
+): string {
+  const computer = blocks.find((block) => block.kind === "computer");
+  if (computer?.text) return computer.text;
+  const botMessage = blocks.find((block) => block.kind === "bot_message");
+  if (botMessage) {
+    const peer = botMessage.peerName?.trim() || "bot";
+    return botMessage.direction === "out" ? `Messaged ${peer}` : `Message from ${peer}`;
+  }
+  return blocks.find((block) => block.text)?.text ?? "";
+}
+
 function mapBot(
   bot: {
     id: string;
@@ -159,8 +177,10 @@ export function createRepos(prisma: PrismaClient) {
         const blocks = (bot.thread?.messages[0]?.blocks ?? []) as Array<{
           kind?: string;
           text?: string;
+          direction?: string;
+          peerName?: string;
         }>;
-        const preview = blocks.find((block) => block.text)?.text ?? "";
+        const preview = inboxPreview(blocks);
         return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
       });
     },

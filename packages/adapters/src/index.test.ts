@@ -141,6 +141,9 @@ describe("builtin tools", () => {
         "archive_bot",
       ]),
     );
+    const spawn = builtinAgentTools.find((tool) => tool.name === "spawn_bot");
+    expect(JSON.stringify(spawn?.inputSchema)).toContain("description");
+    expect(JSON.stringify(spawn?.inputSchema)).toContain("Title Case");
   });
 });
 

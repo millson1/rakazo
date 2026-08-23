@@ -6,6 +6,7 @@ import type {
   SandboxProvider,
 } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
+import { humanizeSpawnedBot } from "@rakazo/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   archiveBot,
@@ -24,6 +25,14 @@ const context = {
 } satisfies AdapterContext;
 
 describe("spawned bot creation", () => {
+  it("title-cases kebab names before createBot when a spawn is not a retry", async () => {
+    expect(humanizeSpawnedBot({ name: "email-responder" })).toEqual({
+      name: "Email Responder",
+      title: "Email Responder",
+      description: "Email Responder handles assigned work in this workspace.",
+    });
+  });
+
   it("returns the existing child when a spawn is retried", async () => {
     const findUnique = vi.fn().mockResolvedValue({
       id: "child-1",

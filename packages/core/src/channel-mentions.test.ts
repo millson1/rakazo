@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mentionedBotIds } from "./channel-mentions.js";
+import { mentionQueryAt, mentionedBotIds } from "./channel-mentions.js";
 
 const members = [
   { botId: "chief", name: "Chief" },
@@ -39,5 +39,37 @@ describe("channel mentions", () => {
 
   it("ignores a bare name with no at sign", () => {
     expect(mentionedBotIds("Accountant should look at this", members)).toEqual([]);
+  });
+
+  it("matches slug aliases so a kebab name still wakes the titled bot", () => {
+    expect(
+      mentionedBotIds("@email-responder please look", [
+        {
+          botId: "mail",
+          name: "Email Responder",
+          aliases: ["email-responder"],
+        },
+      ]),
+    ).toEqual(["mail"]);
+  });
+
+  it("does not wake the same bot twice when name and alias both match", () => {
+    expect(
+      mentionedBotIds("@Email Responder", [
+        { botId: "mail", name: "Email Responder", aliases: ["Email Responder"] },
+      ]),
+    ).toEqual(["mail"]);
+  });
+});
+
+describe("mention query at cursor", () => {
+  it("opens after a lone at sign", () => {
+    expect(mentionQueryAt("@", 1)).toEqual({ start: 0, query: "" });
+    expect(mentionQueryAt("hi @em", 6)).toEqual({ start: 3, query: "em" });
+  });
+
+  it("does not open in the middle of a word", () => {
+    expect(mentionQueryAt("foo@bar", 4)).toBeNull();
+    expect(mentionQueryAt("hello there", 5)).toBeNull();
   });
 });

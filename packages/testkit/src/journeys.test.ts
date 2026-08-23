@@ -1381,6 +1381,21 @@ describeJourneys("required product journeys", () => {
     ).messages.at(-1);
     expect(reply).toMatchObject({ authorType: "bot", authorName: "Alpha", text: "On it." });
 
+    const talk = await rpc<ChannelDto>(app, cookie, "channels/create", {
+      name: "talk",
+      botIds: [],
+    });
+    expect(talk.members).toEqual([]);
+    const ping = await rpc<ChannelDetailDto>(app, cookie, "channels/post", {
+      channelId: talk.id,
+      text: "@Alpha please join this channel",
+    });
+    expect(ping.members.map((member) => member.name)).toContain("Alpha");
+    await waitForDatabase(async () => {
+      const runs = await prisma.run.count({ where: { botId: alpha.id, trigger: "channel" } });
+      return runs >= 2;
+    });
+
     // Non-members cannot post, and another workspace cannot see or touch the channel.
     expect(
       await postBotChannelMessage(prisma, {

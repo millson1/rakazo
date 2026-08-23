@@ -814,6 +814,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               spawnKey: executionId,
               name: String(args.name ?? ""),
               title: args.title ? String(args.title) : undefined,
+              description: args.description ? String(args.description) : undefined,
               instructions: args.instructions ? String(args.instructions) : undefined,
               prompt: args.prompt ? String(args.prompt) : undefined,
             });

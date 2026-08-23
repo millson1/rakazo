@@ -177,8 +177,19 @@ export const builtinAgentTools: ConnectorTool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string" },
-        title: { type: "string" },
+        name: {
+          type: "string",
+          description:
+            "Human display name with spaces and Title Case, e.g. Email Responder. Never kebab-case or snake_case.",
+        },
+        title: {
+          type: "string",
+          description: "Same human name, or a short role title. Required.",
+        },
+        description: {
+          type: "string",
+          description: "One-line description of what this bot does. Required.",
+        },
         instructions: { type: "string" },
         prompt: {
           type: "string",

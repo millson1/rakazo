@@ -8,7 +8,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { routineJobKey, runContinueJob, runJobKey } from "@rakazo/adapter-kit";
 import type { Actor, Bot } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
+import { ACTIVE_RUN_STATUSES, humanizeSpawnedBot } from "@rakazo/core";
 import {
   computerScopeKey,
   createRepos,
@@ -45,12 +45,18 @@ export async function spawnBot(
     spawnKey: string;
     name: string;
     title?: string;
+    description?: string;
     instructions?: string;
     prompt?: string;
   },
 ) {
-  const name = input.name.trim();
-  if (!name) return { error: "Bot name is required." };
+  if (!input.name.trim() && !(input.title ?? "").trim()) return { error: "Bot name is required." };
+  const identity = humanizeSpawnedBot({
+    name: input.name,
+    title: input.title,
+    description: input.description,
+    instructions: input.instructions,
+  });
 
   const actor: Actor = {
     userId: input.spawnedBy.userId,
@@ -62,9 +68,9 @@ export async function spawnBot(
   let created: Pick<Bot, "id" | "name" | "title" | "threadId">;
   try {
     created = await createRepos(deps.prisma).createBot(actor, {
-      name,
-      title: (input.title ?? "").trim(),
-      description: "",
+      name: identity.name,
+      title: identity.title,
+      description: identity.description,
       instructions: (input.instructions ?? "").trim(),
       notifyOnFinish: true,
       parentBotId: input.spawnedBy.id,

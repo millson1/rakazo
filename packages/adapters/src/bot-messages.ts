@@ -1,5 +1,6 @@
 import { type JobPublisher, runContinueJob } from "@rakazo/adapter-kit";
 import type { BotChannel, MessageBlock } from "@rakazo/contracts";
+import { botMatchesName } from "@rakazo/core";
 import { createThreadMessage, type PrismaClient, type ThreadEvents } from "@rakazo/db";
 
 const PING_PONG_WINDOW_MS = 5 * 60 * 1000;
@@ -44,11 +45,11 @@ export async function messageBot(
       archivedAt: null,
       id: { not: input.fromBotId },
     },
-    select: { id: true, name: true, color: true, thread: { select: { id: true } } },
+    select: { id: true, name: true, title: true, color: true, thread: { select: { id: true } } },
   });
   const matches = input.botId
     ? teammates.filter((bot) => bot.id === input.botId)
-    : teammates.filter((bot) => bot.name.toLowerCase() === name.toLowerCase());
+    : teammates.filter((bot) => botMatchesName(bot, name));
   if (input.botId && matches.length === 0) {
     return { error: "That bot is not in this workspace." };
   }

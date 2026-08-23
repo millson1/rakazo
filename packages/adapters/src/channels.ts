@@ -1,6 +1,6 @@
 import { type JobPublisher, runContinueJob } from "@rakazo/adapter-kit";
 import type { Actor, Channel, ChannelDetail, ChannelMessage } from "@rakazo/contracts";
-import { mentionedBotIds } from "@rakazo/core";
+import { mentionNameAliases, mentionedBotIds } from "@rakazo/core";
 import { IsolationError, type PrismaClient } from "@rakazo/db";
 
 const HISTORY_LIMIT = 200;
@@ -16,7 +16,7 @@ interface ChannelRow {
   name: string;
   createdAt: Date;
   updatedAt: Date;
-  members: { bot: { id: string; name: string; color: string } | null }[];
+  members: { bot: { id: string; name: string; title: string; color: string } | null }[];
 }
 
 interface ChannelMessageRow {
@@ -30,7 +30,7 @@ interface ChannelMessageRow {
 
 const channelInclude = {
   members: {
-    include: { bot: { select: { id: true, name: true, color: true } } },
+    include: { bot: { select: { id: true, name: true, title: true, color: true } } },
     orderBy: { createdAt: "asc" },
   },
 } as const;
@@ -195,8 +195,8 @@ export async function removeChannel(
 }
 
 /**
- * A user message only wakes the members it names. Bot replies deliberately do not wake other
- * bots, so a channel cannot turn into an unbounded bot-to-bot loop.
+ * A user message wakes every workspace bot it names. Mentioning a bot that is not yet a
+ * member adds it to the channel, then wakes it. Bot replies do not wake other bots.
  */
 export async function postUserChannelMessage(
   deps: ChannelDeps,
@@ -218,10 +218,31 @@ export async function postUserChannelMessage(
     data: { updatedAt: new Date() },
   });
 
-  const candidates = channel.members.flatMap((member) =>
-    member.bot ? [{ botId: member.bot.id, name: member.bot.name }] : [],
+  const workspaceBots = await deps.prisma.bot.findMany({
+    where: {
+      workspaceId: actor.workspaceId,
+      userId: actor.userId,
+      archivedAt: null,
+    },
+    select: { id: true, name: true, title: true },
+  });
+  const candidates = workspaceBots.map((bot) => ({
+    botId: bot.id,
+    name: bot.name,
+    aliases: mentionNameAliases(bot.name, bot.title),
+  }));
+  const memberIds = new Set(
+    channel.members.flatMap((member) => (member.bot ? [member.bot.id] : [])),
   );
   for (const botId of mentionedBotIds(text, candidates)) {
+    if (!memberIds.has(botId)) {
+      await deps.prisma.channelMember.upsert({
+        where: { channelId_botId: { channelId: channel.id, botId } },
+        create: { channelId: channel.id, botId },
+        update: {},
+      });
+      memberIds.add(botId);
+    }
     await wakeChannelBot(deps, actor, { id: channel.id, name: channel.name }, botId).catch(
       (error) => {
         console.error("channel wake", error);
