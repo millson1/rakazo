@@ -26,6 +26,32 @@ const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const MAX_AGENT_TOOL_NAME_LENGTH = 64;
 const FALLBACK_AGENT_TOOL_NAME = "connector_tool";
 
+export function composeSystemPrompt(
+  instructions: string,
+  hasComputerTool: boolean,
+  canPostProgress = false,
+): string {
+  const operatingMode = hasComputerTool
+    ? "You are a concise, capable operator with a real computer. Act on clear requests instead of narrating what you would do."
+    : "You are a concise, capable operator with a sandbox filesystem and shell. Act on clear requests instead of narrating what you would do.";
+  const responseStyle =
+    "Answer the request directly. Do not open with generic capability menus or ask the user to choose a category. If a detail is essential, ask one specific question.";
+  const progressStyle = canPostProgress
+    ? "For multi-step work, use the say tool to post brief progress updates as separate messages before or after meaningful actions. Do not narrate token by token, and do not use it for a simple direct answer."
+    : "";
+  return [operatingMode, responseStyle, progressStyle, instructions.trim()]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function stitchTextDelta(previous: string, delta: string): string {
+  const normalized = delta.replace(/([.!?][\])"']?)(?=[A-Z])/g, "$1 ");
+  if (previous && /^[A-Z]/.test(normalized) && /[.!?][\])"']?$/.test(previous)) {
+    return ` ${normalized}`;
+  }
+  return normalized;
+}
+
 export class PiAgentRuntime implements AgentRuntime {
   describe() {
     return {
@@ -88,11 +114,11 @@ export class PiAgentRuntime implements AgentRuntime {
           getApiKey: async () => apiKey,
           transformContext: async (messages) => pruneComputerScreenshotContext(messages),
           initialState: {
-            systemPrompt:
-              request.instructions ||
-              (toolDefs.some((tool) => tool.name === "computer_observe")
-                ? "You are a concise operator with a real computer. Act. Don't narrate."
-                : "You are a concise operator with a sandbox filesystem and shell. Act. Don't narrate."),
+            systemPrompt: composeSystemPrompt(
+              request.instructions,
+              toolDefs.some((tool) => tool.name === "computer_observe"),
+              toolDefs.some((tool) => tool.name === "say"),
+            ),
             model,
             thinkingLevel: model.reasoning ? "medium" : "off",
             tools,
@@ -184,7 +210,7 @@ export class PiAgentRuntime implements AgentRuntime {
             event.type === "message_update" &&
             event.assistantMessageEvent.type === "text_delta"
           ) {
-            const delta = event.assistantMessageEvent.delta;
+            const delta = stitchTextDelta(streamed, event.assistantMessageEvent.delta);
             if (delta) {
               streamed += delta;
               queue.push({ type: "text", text: delta });

@@ -40,8 +40,8 @@ describe("groupBotsForSidebar", () => {
     ]);
   });
 
-  it("does not add a heading before sections or pins exist", () => {
+  it("labels the default bot list", () => {
     const groups = groupBotsForSidebar([{ id: "first", pinned: false, sectionId: null }], []);
-    expect(groups[0]?.title).toBeNull();
+    expect(groups[0]?.title).toBe("Teammates");
   });
 });

@@ -41,7 +41,7 @@ export function groupBotsForSidebar<T extends SectionedBot>(
   if (unassigned.length > 0) {
     grouped.push({
       key: "unassigned",
-      title: pinned.length > 0 || sections.length > 0 ? "Unassigned" : null,
+      title: pinned.length > 0 || sections.length > 0 ? "Unassigned" : "Teammates",
       bots: unassigned,
     });
   }

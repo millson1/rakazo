@@ -2195,9 +2195,10 @@ function CreateMenu({
         aria-label="New"
         title="New"
         onClick={() => setOpen((current) => !current)}
-        className="text-[21px] leading-none text-[#7A7A80] hover:text-[#C9C9CE]"
+        className="flex h-7 items-center gap-1.5 rounded-lg border border-[#252529] bg-[#17171A] px-2 text-[12.5px] font-medium text-[#C9C9CE] hover:bg-[#212124] hover:text-[#F1F1F2]"
       >
-        +
+        <Plus size={15} strokeWidth={2} />
+        <span>New</span>
       </button>
       {open ? (
         <div
@@ -2379,7 +2380,7 @@ const Transcript = memo(function Transcript({
         data-testid="transcript"
         className="rk-transcript rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-[var(--rk-gutter)] py-3 sm:px-4"
       >
-        <div ref={contentRef} className="mx-auto flex w-full max-w-[720px] flex-col gap-2.5">
+        <div ref={contentRef} className="mx-auto flex w-full max-w-[760px] flex-col gap-3.5">
           {olderCursor != null ? (
             <button
               type="button"
@@ -2497,8 +2498,8 @@ const Composer = memo(function Composer({
   }
 
   return (
-    <div className="px-[var(--rk-gutter)] pb-3 pt-2 sm:px-4">
-      <div className="w-full">
+    <div className="px-[var(--rk-gutter)] pb-4 pt-2 sm:px-4">
+      <div className="mx-auto w-full max-w-[760px]">
         {sendError || dictationError ? (
           <div className="mb-3 rounded-[14px] border border-[#5A2A2A] bg-[#2A1717] px-4 py-2 text-[13px] text-[#F1A8A8]">
             {sendError ?? dictationError}
@@ -2696,7 +2697,7 @@ const MessageView = memo(function MessageView({
         if (block.kind === "progress") {
           return (
             <div key={i} className="flex justify-start">
-              <div className="max-w-[74%] rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-bot)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#DFDFE2]">
+              <div className="max-w-[82%] rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-bot)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[15px] leading-[1.6] text-[#E6E6E9] shadow-[0_1px_0_rgba(255,255,255,.025)]">
                 <ChatMarkdown streaming>{block.text}</ChatMarkdown>
               </div>
             </div>
@@ -2816,7 +2817,7 @@ const MessageView = memo(function MessageView({
         if (block.kind === "text" && message.role === "user") {
           return (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[70%] rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-user)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#ECECEE]">
+              <div className="max-w-[72%] rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-user)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[15px] leading-[1.55] text-[#F4F4F5] shadow-[0_1px_0_rgba(255,255,255,.05)]">
                 <MentionText text={block.text} bots={bots} />
               </div>
             </div>
@@ -2825,7 +2826,7 @@ const MessageView = memo(function MessageView({
         if (block.kind === "text") {
           return (
             <div key={i} className="flex justify-start">
-              <div className="max-w-[80%] rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-bot)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.5] text-[#DFDFE2]">
+              <div className="max-w-[82%] rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-bot)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[15px] leading-[1.6] text-[#E6E6E9] shadow-[0_1px_0_rgba(255,255,255,.025)]">
                 <ChatMarkdown>{block.text}</ChatMarkdown>
                 {voiceReady ? (
                   <button
@@ -3667,17 +3668,23 @@ function BotSettings({
           onClick={() => {
             setSaving(true);
             setError(null);
-            void onSave({
-              name,
-              title,
-              description,
-              instructions: description,
+            const patch = {
               computerMode,
-              autoSpeak,
-              voiceId: voiceId || null,
-              modelProvider: modelProvider || null,
-              modelId: modelProvider ? modelId || null : null,
-            })
+              ...(name !== botDisplayName(bot) ? { name } : {}),
+              ...(title !== bot.title ? { title } : {}),
+              ...(description !== bot.description ? { description, instructions: description } : {}),
+              ...(autoSpeak !== bot.autoSpeak ? { autoSpeak } : {}),
+              ...(voiceId !== (bot.voiceId ?? "") ? { voiceId: voiceId || null } : {}),
+              ...(modelProvider !== (bot.modelProvider ?? "")
+                ? {
+                    modelProvider: modelProvider || null,
+                    modelId: modelProvider ? modelId || null : null,
+                  }
+                : modelId !== (bot.modelId ?? "")
+                  ? { modelId: modelId || null }
+                  : {}),
+            };
+            void onSave(patch)
               .catch((err) => setError(err instanceof Error ? err.message : "Could not save"))
               .finally(() => setSaving(false));
           }}
@@ -4089,7 +4096,12 @@ function ComputerScreenThumb({
       className="rk-screen-thumb app-no-drag"
     >
       {embedded ? (
-        <iframe title="" src={embedded} sandbox={screenIframeSandbox(embedded)} tabIndex={-1} />
+        <iframe
+          title={`${label} preview`}
+          src={embedded}
+          sandbox={screenIframeSandbox(embedded)}
+          tabIndex={-1}
+        />
       ) : (
         <span className="grid h-full w-full place-items-center text-[#5C5C62]">
           <Monitor size={14} strokeWidth={1.7} />

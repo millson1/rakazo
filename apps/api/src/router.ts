@@ -459,7 +459,13 @@ export function createRouter(deps: RouterDeps) {
       }),
       create: authed.bots.create.handler(async ({ context, input }) => {
         const bot = await repos.createBot(context.actor, input);
-        await openOnboardingQuestion(deps, context.actor, bot);
+        // The bot is usable as soon as its transaction commits. A welcome prompt must not strand
+        // the user on onboarding if that optional event write fails.
+        try {
+          await openOnboardingQuestion(deps, context.actor, bot);
+        } catch (error) {
+          console.error("Could not open the bot welcome question", error);
+        }
         return bot;
       }),
       duplicate: authed.bots.duplicate.handler(async ({ context, input }) => {

@@ -19,7 +19,7 @@
 .rk-chat-markdown table,
 .rk-chat-markdown ul,
 .rk-chat-markdown ol {
-  margin: 0.65em 0;
+  margin: 0.8em 0;
 }
 
 .rk-chat-markdown h1,
@@ -28,7 +28,7 @@
 .rk-chat-markdown h4,
 .rk-chat-markdown h5,
 .rk-chat-markdown h6 {
-  margin: 0.9em 0 0.35em;
+  margin: 1em 0 0.4em;
   color: #f3f3f4;
   font-weight: 650;
   line-height: 1.25;
@@ -63,7 +63,7 @@
 }
 
 .rk-chat-markdown li + li {
-  margin-top: 0.25em;
+  margin-top: 0.35em;
 }
 
 .rk-chat-markdown li > p {

@@ -1,12 +1,33 @@
 import type { ConnectorTool } from "@rakazo/adapter-kit";
 import { describe, expect, it } from "vitest";
-import { normalizeAgentToolName, normalizeAgentToolNames, PiAgentRuntime } from "./pi-runtime.js";
+import {
+  composeSystemPrompt,
+  normalizeAgentToolName,
+  normalizeAgentToolNames,
+  PiAgentRuntime,
+  stitchTextDelta,
+} from "./pi-runtime.js";
 
 function tool(name: string): ConnectorTool {
   return { name, description: name, inputSchema: { type: "object" } };
 }
 
 describe("Pi agent runtime", () => {
+  it("keeps the action-oriented baseline alongside bot preferences", () => {
+    expect(composeSystemPrompt("Write warmly.", false)).toContain("Write warmly.");
+    expect(composeSystemPrompt("", true)).toContain("real computer");
+    expect(composeSystemPrompt("", false)).toContain("generic capability menus");
+    expect(composeSystemPrompt("", false, true)).toContain("say tool");
+  });
+
+  it("repairs provider sentence chunks without splitting words", () => {
+    expect(stitchTextDelta("Workspace is empty.", "Pick a lane.")).toBe(" Pick a lane.");
+    expect(stitchTextDelta("", "Checking the plate.Hey. Plate's empty.")).toBe(
+      "Checking the plate. Hey. Plate's empty.",
+    );
+    expect(stitchTextDelta("Lis", "bon")).toBe("bon");
+  });
+
   it("reports an unknown model without calling a provider", async () => {
     const runtime = new PiAgentRuntime();
     const events: string[] = [];

@@ -50,6 +50,7 @@ export function OnboardingPage() {
   const [description, setDescription] = useState("");
   const [answers, setAnswers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [creatingBot, setCreatingBot] = useState(false);
   const [oauth, setOauth] = useState<{
     verificationUri: string;
     userCode: string;
@@ -218,17 +219,26 @@ export function OnboardingPage() {
   }
 
   async function createBot() {
+    if (creatingBot) return;
+    setError(null);
+    setCreatingBot(true);
     const instructions = answers.length
       ? `User setup:\n${answers.map((a) => `- ${a}`).join("\n")}`
       : description;
-    const bot = await rpc.bots.create({
-      name: name.trim(),
-      title,
-      description,
-      instructions,
-      notifyOnFinish: true,
-    });
-    navigate(`/app/${bot.id}`);
+    try {
+      const bot = await rpc.bots.create({
+        name: name.trim(),
+        title,
+        description,
+        instructions,
+        notifyOnFinish: true,
+      });
+      navigate(`/app/${bot.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create your bot");
+    } finally {
+      setCreatingBot(false);
+    }
   }
 
   const question = QUESTIONS[answers.length];
@@ -489,12 +499,14 @@ export function OnboardingPage() {
           <div>
             <h1 className="text-[32px] font-medium text-[#F1F1F2]">You’re set.</h1>
             <p className="mt-2 text-[#85858A]">I’ll pick up work the moment you send it.</p>
+            {error ? <p className="mt-3 text-sm text-[#E65707]">{error}</p> : null}
             <button
               type="button"
+              disabled={creatingBot}
               onClick={() => void createBot()}
-              className="mt-6 rounded-[11px] bg-[#F1F1EF] px-5 py-2.5 text-[#17171A]"
+              className="mt-6 rounded-[11px] bg-[#F1F1EF] px-5 py-2.5 text-[#17171A] disabled:opacity-40"
             >
-              Open Rakazo
+              {creatingBot ? "Opening…" : "Open Rakazo"}
             </button>
           </div>
         ) : null}
