@@ -14,7 +14,7 @@ function windowChrome(platform: NodeJS.Platform) {
   const mac = platform === "darwin";
   const windows = platform === "win32";
   return {
-    backgroundColor: "#050506",
+    backgroundColor: "#111111",
     show: true,
     autoHideMenuBar: true,
     frame: true,
@@ -22,7 +22,7 @@ function windowChrome(platform: NodeJS.Platform) {
     trafficLightPosition: mac ? { x: 16, y: 16 } : undefined,
     titleBarOverlay: windows
       ? {
-          color: "#050506",
+          color: "#111111",
           symbolColor: "#ECECEE",
           height: TITLEBAR_OVERLAY_HEIGHT,
         }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mentionQueryAt, mentionedBotIds } from "./channel-mentions.js";
+import { mentionedBotIds, mentionQueryAt, mentionRanges } from "./channel-mentions.js";
 
 const members = [
   { botId: "chief", name: "Chief" },
@@ -59,6 +59,38 @@ describe("channel mentions", () => {
         { botId: "mail", name: "Email Responder", aliases: ["Email Responder"] },
       ]),
     ).toEqual(["mail"]);
+  });
+});
+
+describe("mention ranges", () => {
+  it("covers the longest matching name so a prefix bot is not also highlighted", () => {
+    expect(mentionRanges("@Chief of Staff please take this", members)).toEqual([
+      { start: 0, end: "@Chief of Staff".length, botId: "chief-of-staff" },
+    ]);
+  });
+
+  it("is case insensitive", () => {
+    expect(mentionRanges("hey @accountant", members)).toEqual([
+      { start: 4, end: 4 + "@accountant".length, botId: "accountant" },
+    ]);
+  });
+
+  it("matches slug aliases", () => {
+    expect(
+      mentionRanges("@email-responder please look", [
+        {
+          botId: "mail",
+          name: "Email Responder",
+          aliases: ["email-responder"],
+        },
+      ]),
+    ).toEqual([{ start: 0, end: "@email-responder".length, botId: "mail" }]);
+  });
+
+  it("still ranges the shorter name when it is the one mentioned", () => {
+    expect(mentionRanges("@Chief please take this", members)).toEqual([
+      { start: 0, end: "@Chief".length, botId: "chief" },
+    ]);
   });
 });
 

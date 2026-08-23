@@ -20,7 +20,7 @@ describe("desktop window chrome", () => {
     expect(opts.frame).toBe(true);
     expect(opts.titleBarStyle).toBe("hidden");
     expect(opts.titleBarOverlay).toEqual({
-      color: "#050506",
+      color: "#111111",
       symbolColor: "#ECECEE",
       height: 36,
     });

@@ -3,14 +3,15 @@ import {
   botDisplayName,
   filterMentionableBots,
   formatChatTimestamp,
+  mentionedBotIds,
   mentionNameAliases,
   mentionQueryAt,
-  mentionedBotIds,
   shouldShowChatTimestamp,
 } from "@rakazo/core";
 import { BotAvatar } from "@rakazo/ui-web";
 import { ArrowUp, Check, Hash, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { MentionText } from "../components/MentionText";
 import { rpc } from "../lib/rpc";
 
 // Mentioned bots answer through an agent tool long after the post resolves, so their replies
@@ -205,10 +206,10 @@ export function ChannelView({
     <main
       data-testid="channel-view"
       data-channel-id={channelId}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0D0D0E]"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--rk-main)]"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-[#141416] px-[var(--rk-header-x)] py-[var(--rk-header-y)]">
-        <div className="min-w-0">
+      <div className="rk-titlebar rk-caption-pad app-drag flex items-center justify-between gap-3 px-[var(--rk-header-x)]">
+        <div className="app-no-drag flex min-w-0 items-center gap-2">
           {editingName ? (
             <input
               ref={nameInputRef}
@@ -233,7 +234,7 @@ export function ChannelView({
                   setEditingName(false);
                 }
               }}
-              className="w-[240px] rounded-[9px] border border-[#343438] bg-[#101012] px-2.5 py-1 text-[16px] font-medium text-[#ECECEE] outline-none focus:border-[#66666D]"
+              className="h-7 w-[240px] rounded-[8px] border border-[#343438] bg-[#101012] px-2 text-[14px] font-medium text-[#ECECEE] outline-none focus:border-[#66666D]"
             />
           ) : (
             <button
@@ -247,32 +248,13 @@ export function ChannelView({
               className="flex min-w-0 items-center gap-1.5"
             >
               <Hash size={14} strokeWidth={2} className="shrink-0 text-[#6C6C70]" />
-              <span className="truncate text-[15px] font-medium text-[#ECECEE]">
+              <span className="truncate text-[14px] font-medium text-[#ECECEE]">
                 {detail?.name ?? "Channel"}
               </span>
             </button>
           )}
-          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]">
-            {detail?.members.length ? (
-              detail.members.map((member) => {
-                const bot = bots.find((entry) => entry.id === member.botId);
-                return (
-                <span key={member.botId} className="flex items-center gap-1">
-                  <BotAvatar color={member.color} size={12} />
-                  <span className="truncate" style={{ color: member.color }}>
-                    {bot ? botDisplayName(bot) : member.name}
-                  </span>
-                </span>
-                );
-              })
-            ) : (
-              <span className="text-[#6C6C70]">
-                {detail ? "No bots in this channel yet" : "Opening channel…"}
-              </span>
-            )}
-          </div>
         </div>
-        <div ref={membersRef} className="relative flex shrink-0 items-center gap-1">
+        <div ref={membersRef} className="app-no-drag relative flex shrink-0 items-center gap-1">
           <button
             type="button"
             aria-haspopup="menu"
@@ -280,7 +262,7 @@ export function ChannelView({
             aria-label="Manage members"
             title="Manage members"
             onClick={() => setMembersOpen((open) => !open)}
-            className="grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[#1B1B1E]"
+            className="grid h-7 w-8 place-items-center rounded-[8px] hover:bg-[#1B1B1E]"
             style={{ background: membersOpen ? "#1B1B1E" : "transparent" }}
           >
             <Users size={17} strokeWidth={1.6} className="text-[#A8A8AD]" />
@@ -293,7 +275,7 @@ export function ChannelView({
               setMembersOpen(false);
               setDeleteOpen(true);
             }}
-            className="grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[#1B1B1E]"
+            className="grid h-7 w-8 place-items-center rounded-[8px] hover:bg-[#1B1B1E]"
           >
             <Trash2 size={16} strokeWidth={1.6} className="text-[#A8A8AD]" />
           </button>
@@ -357,8 +339,8 @@ export function ChannelView({
               ) : null}
               {message.authorType === "user" ? (
                 <div className="flex justify-end">
-                  <div className="max-w-[70%] whitespace-pre-wrap rounded-[var(--rk-radius-bubble)] bg-[#2F2F33] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#ECECEE]">
-                    {message.text}
+                  <div className="max-w-[70%] whitespace-pre-wrap rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-user)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.45] text-[#ECECEE]">
+                    <MentionText text={message.text} bots={bots} />
                   </div>
                 </div>
               ) : (
@@ -371,8 +353,8 @@ export function ChannelView({
                     >
                       {message.authorName}
                     </div>
-                    <div className="whitespace-pre-wrap rounded-[var(--rk-radius-bubble)] bg-[#1A1A1D] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.5] text-[#DFDFE2]">
-                      {message.text}
+                    <div className="whitespace-pre-wrap rounded-[var(--rk-radius-bubble)] bg-[var(--rk-bubble-bot)] px-[var(--rk-bubble-x)] py-[var(--rk-bubble-y)] text-[14.5px] leading-[1.5] text-[#DFDFE2]">
+                      <MentionText text={message.text} bots={bots} />
                     </div>
                   </div>
                 </div>
@@ -382,7 +364,7 @@ export function ChannelView({
         </div>
       </div>
       <div className="px-[var(--rk-gutter)] pb-3 pt-2 sm:px-4">
-        <div className="relative mx-auto w-full max-w-[720px]">
+        <div className="relative w-full">
           {detail && error ? (
             <div className="mb-2 rounded-[10px] border border-[#5A2A2A] bg-[#2A1717] px-3 py-1.5 text-[12.5px] text-[#F1A8A8]">
               {error}

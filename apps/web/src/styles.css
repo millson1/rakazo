@@ -60,6 +60,61 @@ body,
   -webkit-app-region: no-drag;
 }
 
+.rk-titlebar {
+  min-height: var(--rk-titlebar-h, 36px);
+  height: var(--rk-titlebar-h, 36px);
+}
+
+.rk-caption-pad {
+  padding-right: max(
+    8px,
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px)
+  );
+}
+
+.rk-status-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px #111111;
+}
+
+.rk-thought-done .rk-thought-chrome {
+  opacity: 0;
+  pointer-events: none;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.12s ease;
+}
+
+.group\/msg:hover .rk-thought-done .rk-thought-chrome,
+.group\/msg:focus-within .rk-thought-done .rk-thought-chrome,
+.rk-thought-done[open] .rk-thought-chrome {
+  opacity: 1;
+  pointer-events: auto;
+  max-height: 2rem;
+}
+
+.rk-screen-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #101012;
+}
+
+.rk-screen-preview iframe {
+  pointer-events: none;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
 .rk-schedule-select {
   appearance: none;
   background-color: #24242a;

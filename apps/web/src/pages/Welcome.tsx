@@ -1,14 +1,11 @@
 import { useNavigate } from "react-router-dom";
-import { desktopBridge, windowChromeKind } from "../lib/desktop";
 import { WindowChrome } from "./WindowChrome";
 
 export function WelcomePage() {
   const navigate = useNavigate();
-  const chromeKind = windowChromeKind(desktopBridge());
   return (
     <div className="flex min-h-full flex-col bg-[#08080A]">
-      {chromeKind === "overlay" ? <div className="app-drag h-9 shrink-0" aria-hidden="true" /> : null}
-      <div className="app-drag flex gap-2 px-5 py-[18px]">
+      <div className="rk-titlebar rk-caption-pad app-drag flex items-center px-5">
         <WindowChrome />
       </div>
       <div className="flex flex-1 flex-col items-center justify-center gap-11 pb-[90px]">

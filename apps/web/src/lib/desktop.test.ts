@@ -58,5 +58,7 @@ describe("window chrome", () => {
     expect(chrome).not.toContain("FF5F57");
     expect(chrome).not.toContain("FEBC2E");
     expect(chrome).not.toContain("28C840");
+    expect(shell).not.toContain('className="app-drag h-9 shrink-0"');
+    expect(welcome).not.toContain('className="app-drag h-9 shrink-0"');
   });
 });

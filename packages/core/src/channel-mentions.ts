@@ -32,6 +32,44 @@ export function mentionedBotIds(text: string, members: MentionCandidate[]): stri
   return hits;
 }
 
+export function mentionRanges(
+  text: string,
+  members: MentionCandidate[],
+): Array<{ start: number; end: number; botId: string }> {
+  const needles: { botId: string; needle: string }[] = [];
+  for (const member of members) {
+    const names = [member.name, ...(member.aliases ?? [])];
+    for (const name of names) {
+      const trimmed = name.trim();
+      if (!trimmed) continue;
+      needles.push({ botId: member.botId, needle: `@${trimmed.toLowerCase()}` });
+    }
+  }
+  needles.sort((a, b) => b.needle.length - a.needle.length);
+  const lower = text.toLowerCase();
+  const taken = new Array<boolean>(text.length).fill(false);
+  const ranges: Array<{ start: number; end: number; botId: string }> = [];
+  const seen = new Set<string>();
+  for (const item of needles) {
+    if (seen.has(item.botId)) continue;
+    let from = 0;
+    while (from < lower.length) {
+      const start = lower.indexOf(item.needle, from);
+      if (start < 0) break;
+      const end = start + item.needle.length;
+      const overlaps = taken.slice(start, end).some(Boolean);
+      if (!overlaps) {
+        for (let i = start; i < end; i += 1) taken[i] = true;
+        ranges.push({ start, end, botId: item.botId });
+        seen.add(item.botId);
+        break;
+      }
+      from = start + 1;
+    }
+  }
+  return ranges.sort((a, b) => a.start - b.start);
+}
+
 /** The incomplete @query at the cursor, if the user is typing a mention. */
 export function mentionQueryAt(
   text: string,
