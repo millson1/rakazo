@@ -12,14 +12,25 @@ describe("desktop window chrome", () => {
     expect(opts.frame).toBe(true);
     expect(opts.titleBarStyle).toBe("hiddenInset");
     expect(opts.trafficLightPosition).toEqual({ x: 16, y: 16 });
+    expect(opts.titleBarOverlay).toBeUndefined();
   });
 
-  it("is frameless on Windows and Linux so in-app buttons control the window", () => {
-    for (const platform of ["win32", "linux"] as const) {
-      const opts = browserWindowOptions(platform);
-      expect(opts.frame).toBe(false);
-      expect(opts.titleBarStyle).toBeUndefined();
-    }
+  it("uses native Windows caption buttons in a dark titlebar overlay", () => {
+    const opts = browserWindowOptions("win32");
+    expect(opts.frame).toBe(true);
+    expect(opts.titleBarStyle).toBe("hidden");
+    expect(opts.titleBarOverlay).toEqual({
+      color: "#050506",
+      symbolColor: "#ECECEE",
+      height: 36,
+    });
+  });
+
+  it("keeps a native framed window on Linux", () => {
+    const opts = browserWindowOptions("linux");
+    expect(opts.frame).toBe(true);
+    expect(opts.titleBarStyle).toBeUndefined();
+    expect(opts.titleBarOverlay).toBeUndefined();
   });
 });
 
@@ -30,6 +41,7 @@ describe("setup window chrome", () => {
       const app = browserWindowOptions(platform);
       expect(setup.frame).toBe(app.frame);
       expect(setup.titleBarStyle).toBe(app.titleBarStyle);
+      expect(setup.titleBarOverlay).toEqual(app.titleBarOverlay);
       expect(setup.backgroundColor).toBe(app.backgroundColor);
     }
   });

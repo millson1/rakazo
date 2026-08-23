@@ -40,16 +40,23 @@ describe("window chrome", () => {
     expect(windowChromeKind(desktop("darwin"))).toBe("darwin");
   });
 
-  it("uses real window-control buttons on Windows and Linux", () => {
-    expect(windowChromeKind(desktop("win32"))).toBe("controls");
-    expect(windowChromeKind(desktop("linux"))).toBe("controls");
+  it("uses a native caption overlay on Windows", () => {
+    expect(windowChromeKind(desktop("win32"))).toBe("overlay");
   });
 
-  it("does not paint fake traffic lights into the browser shell or welcome page", () => {
+  it("uses a native framed window on Linux", () => {
+    expect(windowChromeKind(desktop("linux"))).toBe("framed");
+  });
+
+  it("does not paint fake traffic lights into the browser shell, welcome page, or window chrome", () => {
     const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "../pages");
     const shell = readFileSync(path.join(root, "Shell.tsx"), "utf8");
     const welcome = readFileSync(path.join(root, "Welcome.tsx"), "utf8");
+    const chrome = readFileSync(path.join(root, "WindowChrome.tsx"), "utf8");
     expect(shell).not.toContain("FF5F57");
     expect(welcome).not.toContain("FF5F57");
+    expect(chrome).not.toContain("FF5F57");
+    expect(chrome).not.toContain("FEBC2E");
+    expect(chrome).not.toContain("28C840");
   });
 });
