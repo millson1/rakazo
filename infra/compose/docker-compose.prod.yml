@@ -129,7 +129,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-rakazo}
       DATA_DIR: /data
-      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+      # Literal docker so a leftover SANDBOX_PROVIDER=e2b in .env cannot demand E2B_API_KEY.
+      SANDBOX_PROVIDER: docker
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       AGENT_RUNTIME: pi
@@ -185,7 +186,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-rakazo}
       DATA_DIR: /data
-      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+      SANDBOX_PROVIDER: docker
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       AGENT_RUNTIME: pi

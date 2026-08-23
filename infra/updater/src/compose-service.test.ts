@@ -87,11 +87,12 @@ describe("the updater compose service", () => {
 });
 
 describe("the production sandbox default", () => {
-  it("defaults SANDBOX_PROVIDER to docker instead of forcing e2b", () => {
-    expect(compose.services.api?.environment?.SANDBOX_PROVIDER).toBe("${SANDBOX_PROVIDER:-docker}");
-    expect(compose.services.worker?.environment?.SANDBOX_PROVIDER).toBe(
-      "${SANDBOX_PROVIDER:-docker}",
-    );
+  it("pins SANDBOX_PROVIDER to docker so a leftover .env e2b value cannot require E2B_API_KEY", () => {
+    const raw = readFileSync(composeFile, "utf8");
+    expect(compose.services.api?.environment?.SANDBOX_PROVIDER).toBe("docker");
+    expect(compose.services.worker?.environment?.SANDBOX_PROVIDER).toBe("docker");
+    expect(raw).not.toMatch(/SANDBOX_PROVIDER:\s*e2b/);
+    expect(raw).not.toMatch(/\$\{E2B_API_KEY:\?/);
   });
 
   it("runs an unpublished supervisor on the app network so Docker computers work", () => {
