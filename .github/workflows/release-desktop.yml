@@ -31,7 +31,20 @@ jobs:
       - name: Build and publish
         # electron-builder writes latest.yml / latest-mac.yml next to the installers; that file is
         # the feed electron-updater reads, so a release without it cannot be picked up by clients.
-        run: pnpm --filter @rakazo/desktop run release
+        # Publish targets the repository running the workflow rather than the package.json owner,
+        # so forks release into their own Releases page instead of failing against upstream.
+        shell: bash
+        run: |
+          pnpm --filter @rakazo/web build
+          pnpm --filter @rakazo/desktop build
+          version="${GITHUB_REF_NAME#v}"
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            version="0.0.0-dev.$(git rev-parse --short HEAD)"
+          fi
+          pnpm --filter @rakazo/desktop exec electron-builder --publish always \
+            -c.extraMetadata.version="$version" \
+            -c.publish.owner="${GITHUB_REPOSITORY_OWNER}" \
+            -c.publish.repo="${GITHUB_REPOSITORY#*/}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The bundled renderer is static assets; the secrets it would otherwise demand only
